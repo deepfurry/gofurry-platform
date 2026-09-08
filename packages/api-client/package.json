@@ -1,0 +1,8 @@
+{
+  "name": "@gofurry/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./public": "./src/public.ts", "./admin": "./src/admin.ts" },
+  "scripts": { "typecheck": "tsc -p tsconfig.json" }
+}

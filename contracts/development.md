@@ -1,0 +1,22 @@
+# Development contract
+
+Use `dev` for integration; `main` is a stable release snapshot. Do not merge, push,
+tag or release without explicit authorization. Preserve unrelated local changes.
+
+Runtime processes read process environment only. The ignored developer launch inputs
+`server/env/{api,admin,worker,migrator}.local` and `.local/readonly.env` contain real
+credentials. Never print, commit, overwrite with placeholders or remove them or their
+ignore rules. Public `.example` templates must contain only localhost placeholders.
+
+Shared development PostgreSQL/Redis are accessed using private local configuration.
+Only repository-owned Goose/River migrations on `gfp_dev` using the prepared migrator
+are allowed. No shared Infra SSH, container administration, cluster-role/Redis ACL
+changes or Tailscale changes. Stop and report missing capabilities with sanitized
+evidence. Do not expose real DSNs, passwords, tokens or Tailnet addresses.
+
+CI never loads `.local` files or connects to shared Infra. It provisions disposable
+PostgreSQL 18 and Redis 8 with disposable credentials and performs fresh migrations,
+driver checks and container builds. CI does not deploy or publish images in P0-0.
+
+`pnpm check` is the cross-platform verification entry point; explicit integration
+and image commands are documented in `docs/development.md`. Record actual results.

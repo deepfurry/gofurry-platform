@@ -1,0 +1,3 @@
+APP_ENV=development
+DATABASE_URL=postgres://gfp_migrator:replace-me@127.0.0.1:5432/gfp_dev?sslmode=disable
+RIVER_SCHEMA=river

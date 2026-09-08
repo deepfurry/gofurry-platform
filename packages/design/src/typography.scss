@@ -1,0 +1,7 @@
+body {
+  font-family: system-ui, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.15; font-weight: 650; }
+p { color: var(--gfp-muted); }

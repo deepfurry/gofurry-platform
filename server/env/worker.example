@@ -1,0 +1,5 @@
+APP_ENV=development
+DATABASE_URL=postgres://gfp_worker:replace-me@127.0.0.1:5432/gfp_dev?sslmode=disable
+REDIS_URL=redis://gfp_runtime:replace-me@127.0.0.1:6379/0
+REDIS_KEY_PREFIX=gfp:
+RIVER_SCHEMA=river

@@ -3,3 +3,16 @@
 
 # Local operator-only files
 /.local/
+
+# Dependency and build outputs (generated source is intentionally tracked)
+node_modules/
+dist/
+.astro/
+coverage/
+*.tsbuildinfo
+/server/bin/
+/.cache/
+*.log
+.DS_Store
+.idea/
+.vscode/

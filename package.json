@@ -1,0 +1,38 @@
+{
+  "name": "gofurry-platform",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "packageManager": "pnpm@10.11.0",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "generate": "node scripts/tasks.mjs generate",
+    "lint": "node scripts/tasks.mjs lint",
+    "typecheck": "tsc -p tsconfig.tools.json && pnpm -r --if-present typecheck",
+    "test": "node scripts/tasks.mjs test",
+    "build": "node scripts/tasks.mjs build",
+    "check": "node scripts/tasks.mjs check",
+    "check:generated": "node scripts/check-generated.mjs",
+    "audit:repository": "node scripts/audit-repository.mjs",
+    "dev:api": "node scripts/run-local.mjs api",
+    "dev:admin-api": "node scripts/run-local.mjs admin",
+    "dev:worker": "node scripts/run-local.mjs worker",
+    "dev:web": "pnpm --filter @gofurry/web dev",
+    "dev:admin": "pnpm --filter @gofurry/admin dev",
+    "migrate:dev": "node scripts/run-local.mjs migrator",
+    "smoke:dev": "node scripts/smoke-dev.mjs",
+    "integration:ci": "node scripts/integration-ci.mjs",
+    "build:images": "node scripts/build-images.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "24.13.3",
+    "eslint": "9.39.5",
+    "eslint-plugin-astro": "1.6.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "orval": "8.30.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0"
+  }
+}

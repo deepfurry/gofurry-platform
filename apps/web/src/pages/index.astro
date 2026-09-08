@@ -1,0 +1,25 @@
+---
+import '@gofurry/design/global.scss';
+import '../styles/layout.css';
+import '../styles/page.scss';
+import HealthCheck from '../components/HealthCheck';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content="GoFurry Platform engineering foundation." />
+    <title>GoFurry Platform</title>
+  </head>
+  <body>
+    <main class="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-6 p-6">
+      <section class="foundation flex flex-col gap-6 p-6 sm:p-10" aria-labelledby="title">
+        <span class="phase">P0-0 · Engineering foundation</span>
+        <h1 id="title">GoFurry Platform</h1>
+        <p>A foundation for discovering and exchanging furry resources. Product features are coming in later phases.</p>
+        <HealthCheck client:load />
+      </section>
+    </main>
+  </body>
+</html>

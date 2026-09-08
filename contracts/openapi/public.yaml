@@ -1,0 +1,56 @@
+openapi: 3.0.3
+info:
+  title: GoFurry Public API
+  version: 0.0.0
+  description: P0-0 process liveness and dependency readiness only.
+paths:
+  /health/live:
+    get:
+      operationId: getLive
+      responses:
+        '200':
+          description: Process alive; no dependency checks.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Live'
+  /health/ready:
+    get:
+      operationId: getReady
+      responses:
+        '200':
+          description: PostgreSQL ready; Redis may be degraded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ready'
+        '503':
+          description: PostgreSQL unavailable or process shutting down.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ready'
+components:
+  schemas:
+    Live:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [alive]
+    Ready:
+      type: object
+      additionalProperties: false
+      required: [status, postgres, redis]
+      properties:
+        status:
+          type: string
+          enum: [ready, degraded, unavailable]
+        postgres:
+          type: string
+          enum: [up, down]
+        redis:
+          type: string
+          enum: [up, down]

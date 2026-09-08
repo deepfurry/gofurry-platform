@@ -1,0 +1,4 @@
+@use './tokens';
+@use './typography';
+body { margin: 0; color: var(--gfp-text); background: var(--gfp-background); }
+a { color: var(--gfp-accent); }

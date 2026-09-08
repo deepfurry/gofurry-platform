@@ -1,0 +1,3 @@
+@use '@gofurry/design/mixins.scss' as design;
+.foundation { @include design.surface; }
+.phase { color: var(--gfp-accent); font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; }

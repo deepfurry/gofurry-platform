@@ -1,0 +1,5 @@
+package: generated
+generate:
+  fiber-v3-server: true
+  models: true
+output: internal/transport/admin/generated/api.gen.go
