@@ -5,7 +5,7 @@ Public/Admin are distinct transport and security boundaries, sharing one Go modu
 ```text
 apps/web / apps/admin → generated API clients → Public/Admin transport
                                                 ↓
-                                      future Application/Domain
+                                       auth / identity
                                                 ↓
                                            sqlc / pgx
                                                 ↓
@@ -13,13 +13,13 @@ apps/web / apps/admin → generated API clients → Public/Admin transport
 worker → jobs adapter → shared Application/Domain (when implemented)
 ```
 
-P0-0 contains only health transport and infrastructure. No product domains or tables
-are scaffolded. `cmd/*` composes configuration, dependencies, startup, signals and
+P0-1A adds local auth, PostgreSQL sessions and basic profiles to P0-0 infrastructure.
+Only `auth` and `identity` are product packages. `cmd/*` composes dependencies, signals and
 bounded cleanup; reusable behavior lives in `internal/`.
 
-Worker never calls Public/Admin HTTP. Future domain code must not import Fiber,
+Worker never calls Public/Admin HTTP. Application/domain code must not import Fiber,
 transport DTOs, Redis or River. River types stay inside Jobs infrastructure and its
-objects live in `river`; business data will live in `app`. PostgreSQL is canonical,
+objects live in `river`; business data lives in `app`. PostgreSQL is canonical,
 Redis holds disposable state. No ORM, AutoMigrate, vectors, MongoDB or message broker.
 
 OpenAPI owns Go transport and TypeScript clients. Goose migrations plus SQL queries

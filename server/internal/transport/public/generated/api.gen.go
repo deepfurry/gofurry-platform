@@ -4,8 +4,51 @@
 package generated
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/oapi-codegen/runtime"
 )
+
+// Defines values for ApiErrorCode.
+const (
+	AUTHACCOUNTDISABLED        ApiErrorCode = "AUTH_ACCOUNT_DISABLED"
+	AUTHEMAILALREADYREGISTERED ApiErrorCode = "AUTH_EMAIL_ALREADY_REGISTERED"
+	AUTHINVALIDCREDENTIALS     ApiErrorCode = "AUTH_INVALID_CREDENTIALS"
+	AUTHUNAUTHENTICATED        ApiErrorCode = "AUTH_UNAUTHENTICATED"
+	INTERNALERROR              ApiErrorCode = "INTERNAL_ERROR"
+	ORIGINFORBIDDEN            ApiErrorCode = "ORIGIN_FORBIDDEN"
+	PROFILEHANDLEUNAVAILABLE   ApiErrorCode = "PROFILE_HANDLE_UNAVAILABLE"
+	PROFILENOTFOUND            ApiErrorCode = "PROFILE_NOT_FOUND"
+	VALIDATIONERROR            ApiErrorCode = "VALIDATION_ERROR"
+)
+
+// Valid indicates whether the value is a known member of the ApiErrorCode enum.
+func (e ApiErrorCode) Valid() bool {
+	switch e {
+	case AUTHACCOUNTDISABLED:
+		return true
+	case AUTHEMAILALREADYREGISTERED:
+		return true
+	case AUTHINVALIDCREDENTIALS:
+		return true
+	case AUTHUNAUTHENTICATED:
+		return true
+	case INTERNALERROR:
+		return true
+	case ORIGINFORBIDDEN:
+		return true
+	case PROFILEHANDLEUNAVAILABLE:
+		return true
+	case PROFILENOTFOUND:
+		return true
+	case VALIDATIONERROR:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for LiveStatus.
 const (
@@ -16,6 +59,21 @@ const (
 func (e LiveStatus) Valid() bool {
 	switch e {
 	case Alive:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MeAccountState.
+const (
+	Active MeAccountState = "active"
+)
+
+// Valid indicates whether the value is a known member of the MeAccountState enum.
+func (e MeAccountState) Valid() bool {
+	switch e {
+	case Active:
 		return true
 	default:
 		return false
@@ -79,6 +137,27 @@ func (e ReadyStatus) Valid() bool {
 	}
 }
 
+// ApiError defines model for ApiError.
+type ApiError struct {
+	Code    ApiErrorCode `json:"code"`
+	Message string       `json:"message"`
+}
+
+// ApiErrorCode defines model for ApiError.Code.
+type ApiErrorCode string
+
+// Credentials defines model for Credentials.
+type Credentials struct {
+	// Email Plain email; surrounding whitespace is trimmed and lookup is lowercase. Dots and plus tags are preserved.
+	Email string `json:"email"`
+
+	// Password Unicode code points; no trimming, normalization or composition requirements.
+	Password *string `json:"password,omitempty"`
+}
+
+// Handle defines model for Handle.
+type Handle = string
+
 // Live defines model for Live.
 type Live struct {
 	Status LiveStatus `json:"status"`
@@ -86,6 +165,42 @@ type Live struct {
 
 // LiveStatus defines model for Live.Status.
 type LiveStatus string
+
+// Me defines model for Me.
+type Me struct {
+	AccountState  MeAccountState `json:"account_state"`
+	CreatedAt     time.Time      `json:"created_at"`
+	Email         string         `json:"email"`
+	EmailVerified bool           `json:"email_verified"`
+	Id            string         `json:"id"`
+	Profile       Profile        `json:"profile"`
+}
+
+// MeAccountState defines model for Me.AccountState.
+type MeAccountState string
+
+// Profile defines model for Profile.
+type Profile struct {
+	Bio                  *string `json:"bio"`
+	DisplayName          *string `json:"display_name"`
+	Handle               *Handle `json:"handle"`
+	SearchEngineIndexing bool    `json:"search_engine_indexing"`
+}
+
+// ProfileUpdate defines model for ProfileUpdate.
+type ProfileUpdate struct {
+	Bio                  *string `json:"bio,omitempty"`
+	DisplayName          *string `json:"display_name,omitempty"`
+	Handle               *Handle `json:"handle,omitempty"`
+	SearchEngineIndexing *bool   `json:"search_engine_indexing,omitempty"`
+}
+
+// PublicProfile defines model for PublicProfile.
+type PublicProfile struct {
+	Bio         *string `json:"bio"`
+	DisplayName *string `json:"display_name"`
+	Handle      string  `json:"handle"`
+}
 
 // Ready defines model for Ready.
 type Ready struct {
@@ -103,14 +218,50 @@ type ReadyRedis string
 // ReadyStatus defines model for Ready.Status.
 type ReadyStatus string
 
+// Authenticated defines model for Authenticated.
+type Authenticated = Me
+
+// CurrentUser defines model for CurrentUser.
+type CurrentUser = Me
+
+// Error defines model for Error.
+type Error = ApiError
+
+// LoginJSONRequestBody defines body for Login for application/json ContentType.
+type LoginJSONRequestBody = Credentials
+
+// RegisterJSONRequestBody defines body for Register for application/json ContentType.
+type RegisterJSONRequestBody = Credentials
+
+// UpdateProfileJSONRequestBody defines body for UpdateProfile for application/json ContentType.
+type UpdateProfileJSONRequestBody = ProfileUpdate
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+
+	// (POST /auth/login)
+	Login(c fiber.Ctx) error
+
+	// (POST /auth/logout)
+	Logout(c fiber.Ctx) error
+
+	// (POST /auth/register)
+	Register(c fiber.Ctx) error
 
 	// (GET /health/live)
 	GetLive(c fiber.Ctx) error
 
 	// (GET /health/ready)
 	GetReady(c fiber.Ctx) error
+
+	// (GET /me)
+	GetMe(c fiber.Ctx) error
+
+	// (PATCH /me/profile)
+	UpdateProfile(c fiber.Ctx) error
+
+	// (GET /users/{handle})
+	GetPublicProfile(c fiber.Ctx, handle string) error
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -121,6 +272,60 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc fiber.Handler
 type HandlerMiddlewareFunc func(c fiber.Ctx, next fiber.Handler) error
+
+// Login operation middleware
+func (siw *ServerInterfaceWrapper) Login(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.Login(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// Logout operation middleware
+func (siw *ServerInterfaceWrapper) Logout(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.Logout(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// Register operation middleware
+func (siw *ServerInterfaceWrapper) Register(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.Register(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
 
 // GetLive operation middleware
 func (siw *ServerInterfaceWrapper) GetLive(c fiber.Ctx) error {
@@ -158,6 +363,71 @@ func (siw *ServerInterfaceWrapper) GetReady(c fiber.Ctx) error {
 	return handler(c)
 }
 
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.GetMe(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// UpdateProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProfile(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.UpdateProfile(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// GetPublicProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetPublicProfile(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "handle" -------------
+	var handle string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "handle", c.Params("handle"), &handle, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter handle: %w", err).Error())
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.GetPublicProfile(c, handle)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
 // FiberServerOptions provides options for the Fiber server.
 type FiberServerOptions struct {
 	BaseURL            string
@@ -180,6 +450,18 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 	for _, m := range options.Middlewares {
 		router.Use(fiber.Handler(m))
 	}
+
+	router.Post(options.BaseURL+"/auth/register", wrapper.Register)
+
+	router.Post(options.BaseURL+"/auth/login", wrapper.Login)
+
+	router.Post(options.BaseURL+"/auth/logout", wrapper.Logout)
+
+	router.Get(options.BaseURL+"/me", wrapper.GetMe)
+
+	router.Patch(options.BaseURL+"/me/profile", wrapper.UpdateProfile)
+
+	router.Get(options.BaseURL+"/users/:handle", wrapper.GetPublicProfile)
 
 	router.Get(options.BaseURL+"/health/live", wrapper.GetLive)
 

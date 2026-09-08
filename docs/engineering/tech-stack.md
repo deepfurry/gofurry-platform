@@ -42,7 +42,9 @@
 - River OSS
 - log/slog
 - golang.org/x/oauth2
-- Argon2id
+- Argon2id through `github.com/gofurry/easyhash` v1.2.0: explicit `WithArgon2id()`
+  for new credentials and an explicit Argon2id `VerifyAndUpgrade` policy. The
+  library's default bcrypt preference is not GoFurry's password policy.
 - AWS SDK v2 S3 client
 
 ## Database

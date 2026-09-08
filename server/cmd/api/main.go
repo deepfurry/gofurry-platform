@@ -8,8 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/deepfurry/gofurry-platform/server/internal/auth"
 	"github.com/deepfurry/gofurry-platform/server/internal/config"
 	"github.com/deepfurry/gofurry-platform/server/internal/database"
+	"github.com/deepfurry/gofurry-platform/server/internal/identity"
 	"github.com/deepfurry/gofurry-platform/server/internal/redisstore"
 	platformruntime "github.com/deepfurry/gofurry-platform/server/internal/runtime"
 	"github.com/deepfurry/gofurry-platform/server/internal/transport/health"
@@ -43,7 +45,11 @@ func run() error {
 	}
 	defer store.Close()
 	checker := health.New(func(ctx context.Context) error { return database.Ready(ctx, pool) }, store.Ping)
-	app := fiber.New(fiber.Config{ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second})
-	public.Register(app, checker)
+	authentication, err := auth.New(pool)
+	if err != nil {
+		return err
+	}
+	app := fiber.New(fiber.Config{ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, BodyLimit: 8192})
+	public.Register(app, checker, authentication, identity.New(pool), public.Options{Environment: c.Environment, PublicOrigin: c.PublicOrigin})
 	return platformruntime.HTTP(ctx, app, c.HTTPAddr, checker, logger)
 }

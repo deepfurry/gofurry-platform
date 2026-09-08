@@ -1,9 +1,112 @@
 openapi: 3.0.3
 info:
   title: GoFurry Public API
-  version: 0.0.0
-  description: P0-0 process liveness and dependency readiness only.
+  version: 0.1.0
+  description: Public health, local authentication and basic profiles. Authentication hardening continues in later P0-1 phases.
 paths:
+  /auth/register:
+    post:
+      operationId: register
+      description: Register a local identity and set an HttpOnly public session cookie. Requires exact PUBLIC_ORIGIN.
+      requestBody:
+        $ref: '#/components/requestBodies/Credentials'
+      responses:
+        '201':
+          $ref: '#/components/responses/Authenticated'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /auth/login:
+    post:
+      operationId: login
+      description: Verify credentials and set a new HttpOnly public session cookie. Requires exact PUBLIC_ORIGIN.
+      requestBody:
+        $ref: '#/components/requestBodies/Credentials'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /auth/logout:
+    post:
+      operationId: logout
+      description: Revoke the current public session and clear its cookie. Requires exact PUBLIC_ORIGIN.
+      security: [{PublicSession: []}]
+      responses:
+        '204':
+          description: Session revoked; Set-Cookie expires the public session cookie.
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /me:
+    get:
+      operationId: getMe
+      security: [{PublicSession: []}]
+      responses:
+        '200':
+          $ref: '#/components/responses/CurrentUser'
+        '401':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /me/profile:
+    patch:
+      operationId: updateProfile
+      description: Omitted fields are retained; null clears nullable fields. Requires exact PUBLIC_ORIGIN.
+      security: [{PublicSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          $ref: '#/components/responses/CurrentUser'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /users/{handle}:
+    get:
+      operationId: getPublicProfile
+      parameters:
+        - in: path
+          name: handle
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Public profile only; no account or authentication fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicProfile'
+        '404':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
   /health/live:
     get:
       operationId: getLive
@@ -31,7 +134,142 @@ paths:
               schema:
                 $ref: '#/components/schemas/Ready'
 components:
+  securitySchemes:
+    PublicSession:
+      type: apiKey
+      in: cookie
+      name: __Host-gofurry_session
+      description: Production uses Secure, HttpOnly, SameSite=Lax, Path=/ and no Domain. Local HTTP development/test uses gofurry_session.
+  requestBodies:
+    Credentials:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Credentials'
+  responses:
+    Authenticated:
+      description: Current user; a new opaque session is delivered only through Set-Cookie.
+      headers:
+        Set-Cookie:
+          schema:
+            type: string
+          description: HttpOnly public session cookie; never exposed as JSON.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Me'
+    CurrentUser:
+      description: Private current-user view; Cache-Control is no-store.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Me'
+    Error:
+      description: Stable error code and safe message; never driver or credential details.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
   schemas:
+    Credentials:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          description: Plain email; surrounding whitespace is trimmed and lookup is lowercase. Dots and plus tags are preserved.
+        password:
+          type: string
+          minLength: 15
+          maxLength: 128
+          writeOnly: true
+          description: Unicode code points; no trimming, normalization or composition requirements.
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [VALIDATION_ERROR, AUTH_EMAIL_ALREADY_REGISTERED, AUTH_INVALID_CREDENTIALS, AUTH_UNAUTHENTICATED, AUTH_ACCOUNT_DISABLED, PROFILE_HANDLE_UNAVAILABLE, PROFILE_NOT_FOUND, ORIGIN_FORBIDDEN, INTERNAL_ERROR]
+        message:
+          type: string
+    Handle:
+      type: string
+      nullable: true
+      minLength: 3
+      maxLength: 32
+      pattern: '^[a-z0-9][a-z0-9_-]{2,31}$'
+    ProfileUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        handle:
+          $ref: '#/components/schemas/Handle'
+        display_name:
+          type: string
+          nullable: true
+          maxLength: 80
+        bio:
+          type: string
+          nullable: true
+          maxLength: 500
+        search_engine_indexing:
+          type: boolean
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [handle, display_name, bio, search_engine_indexing]
+      properties:
+        handle:
+          $ref: '#/components/schemas/Handle'
+        display_name:
+          type: string
+          nullable: true
+          maxLength: 80
+        bio:
+          type: string
+          nullable: true
+          maxLength: 500
+        search_engine_indexing:
+          type: boolean
+    PublicProfile:
+      type: object
+      additionalProperties: false
+      required: [handle, display_name, bio]
+      properties:
+        handle:
+          type: string
+        display_name:
+          type: string
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+    Me:
+      type: object
+      additionalProperties: false
+      required: [id, account_state, created_at, profile, email, email_verified]
+      properties:
+        id:
+          type: string
+          format: uuid
+          x-go-type: string
+        account_state:
+          type: string
+          enum: [active]
+        created_at:
+          type: string
+          format: date-time
+        profile:
+          $ref: '#/components/schemas/Profile'
+        email:
+          type: string
+        email_verified:
+          type: boolean
     Live:
       type: object
       additionalProperties: false

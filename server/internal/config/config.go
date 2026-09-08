@@ -16,6 +16,7 @@ type Config struct {
 	RedisURL       string
 	RedisKeyPrefix string
 	RiverSchema    string
+	PublicOrigin   string
 }
 
 func Load(service string) (Config, error) {
@@ -41,6 +42,17 @@ func load(service string, env func(string) string) (Config, error) {
 		n, parseErr := strconv.Atoi(port)
 		if err != nil || parseErr != nil || n < 1 || n > 65535 {
 			return Config{}, errors.New("HTTP_ADDR must be host:port with a valid port")
+		}
+	}
+	if service == "api" {
+		c.PublicOrigin = env("PUBLIC_ORIGIN")
+		if c.PublicOrigin == "" && c.Environment == "development" {
+			c.PublicOrigin = "http://localhost:4321"
+		}
+		u, err := url.Parse(c.PublicOrigin)
+		if err != nil || u.Hostname() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" ||
+			(u.Scheme != "http" && u.Scheme != "https") || (c.Environment == "production" && u.Scheme != "https") {
+			return Config{}, errors.New("PUBLIC_ORIGIN must be an exact origin (HTTPS required in production)")
 		}
 	}
 	if service != "migrator" {

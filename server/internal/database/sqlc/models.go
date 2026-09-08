@@ -3,3 +3,58 @@
 //   sqlc v1.31.1
 
 package sqlc
+
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type AppAuthIdentity struct {
+	ID              pgtype.UUID
+	UserID          pgtype.UUID
+	Provider        string
+	ProviderSubject string
+	Email           pgtype.Text
+	VerifiedAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type AppPasswordCredential struct {
+	UserID            pgtype.UUID
+	PasswordHash      string
+	PasswordUpdatedAt pgtype.Timestamptz
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type AppSession struct {
+	ID                pgtype.UUID
+	UserID            pgtype.UUID
+	Kind              string
+	AuthMethod        string
+	TokenHash         []byte
+	AuthenticatedAt   pgtype.Timestamptz
+	CreatedAt         pgtype.Timestamptz
+	LastSeenAt        pgtype.Timestamptz
+	IdleExpiresAt     pgtype.Timestamptz
+	AbsoluteExpiresAt pgtype.Timestamptz
+	RevokedAt         pgtype.Timestamptz
+}
+
+type AppUser struct {
+	ID           pgtype.UUID
+	AccountState string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	DeletedAt    pgtype.Timestamptz
+}
+
+type AppUserProfile struct {
+	UserID               pgtype.UUID
+	Handle               pgtype.Text
+	DisplayName          pgtype.Text
+	Bio                  pgtype.Text
+	SearchEngineIndexing bool
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+}

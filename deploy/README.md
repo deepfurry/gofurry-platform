@@ -19,8 +19,12 @@ Web uses tini to forward container signals to Node and reap child processes.
 The server image's command selects a runtime binary; API and Admin require separate
 HTTP_ADDR values when sharing a network namespace. Migrations are explicit developer
 or CI commands and never run at application startup.
+Public API production configuration also requires an HTTPS `PUBLIC_ORIGIN`; it
+always uses the Secure `__Host-gofurry_session` cookie. Inject this through runtime
+environment, never through image build arguments or checked-in local files.
 
-P0-0 defines build artifacts only. Same-origin `/api/*` forwarding belongs to a future
+The retained `p0-0-local` image names are local build tags; rebuilding includes the
+current P0-1A code. Same-origin `/api/*` forwarding belongs to a future
 deployment reverse proxy; the Admin static container returns 503 on that prefix until
 routing is configured. No VPS, Cloudflare, certificates, production credentials,
 image publishing or deployment is provisioned here.

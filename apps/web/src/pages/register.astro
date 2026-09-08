@@ -1,0 +1,9 @@
+---
+import AccountLayout from '../layouts/AccountLayout.astro';
+import CredentialsForm from '../components/CredentialsForm';
+---
+<AccountLayout title="Create your account" description="Make a place for yourself in the furry ecosystem.">
+  <CredentialsForm mode="register" client:load />
+  <noscript>Enable JavaScript to create an account securely.</noscript>
+  <p>Already have an account? <a href="/login">Log in</a></p>
+</AccountLayout>

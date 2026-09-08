@@ -32,7 +32,7 @@ if (!process.env.CI) {
     }
   }
 }
-const forbiddenModules = /(?:go\.mongodb\.org\/|github\.com\/nats-io\/|gorm\.io\/|github\.com\/jinzhu\/gorm|github\.com\/pgvector\/|github\.com\/gofurry\/easyhash)/;
+const forbiddenModules = /(?:go\.mongodb\.org\/|github\.com\/nats-io\/|gorm\.io\/|github\.com\/jinzhu\/gorm|github\.com\/pgvector\/)/;
 for (const path of files) {
   if (!existsSync(join(root, path))) continue;
   const content = readFileSync(join(root, path), 'utf8');
@@ -41,14 +41,15 @@ for (const path of files) {
       || [...privateValues].some(value => content.includes(value))) {
     throw new Error(`Potential private material detected in ${path}; values withheld`);
   }
-  if ((path === 'server/go.mod' || path.endsWith('/package.json')) && forbiddenModules.test(content)) throw new Error(`Forbidden P0-0 dependency in ${path}`);
+  if ((path === 'server/go.mod' || path.endsWith('/package.json')) && forbiddenModules.test(content)) throw new Error(`Forbidden dependency in ${path}`);
   if (path.endsWith('.sql') && /CREATE\s+EXTENSION\s+(?:IF\s+NOT\s+EXISTS\s+)?"?vector\b/i.test(content)) throw new Error(`Prohibited vector extension in ${path}`);
   if (path.endsWith('.go') && !path.startsWith('server/internal/jobs/') && /"github\.com\/riverqueue\//.test(content)) throw new Error(`River import outside Jobs: ${path}`);
+  if (/^server\/internal\/(auth|identity)\/.*\.go$/.test(path) && /"(?:github\.com\/gofiber\/|github\.com\/google\/uuid|github\.com\/redis\/|github\.com\/deepfurry\/gofurry-platform\/server\/internal\/transport\/)/.test(content)) throw new Error(`Application boundary violation: ${path}`);
   if (/^apps\//.test(path) && /@gofurry\/api-client\/.*generated/.test(content)) throw new Error(`Deep generated client import: ${path}`);
 }
 if (files.filter(path => path.endsWith('go.mod')).join() !== 'server/go.mod' || files.some(path => path.endsWith('go.work'))) throw new Error('Expected one server/go.mod and no go.work');
-const forbiddenDomains = ['auth', 'identity', 'resource', 'taxonomy', 'collection', 'contribution', 'discovery', 'exchange', 'discussion', 'poll', 'trust', 'moderation', 'notification', 'analytics'];
-if (files.some(path => forbiddenDomains.some(domain => path.startsWith(`server/internal/${domain}/`)))) throw new Error('Product domain scaffold in P0-0');
+const forbiddenDomains = ['resource', 'taxonomy', 'collection', 'contribution', 'discovery', 'exchange', 'discussion', 'poll', 'trust', 'moderation', 'notification', 'analytics'];
+if (files.some(path => forbiddenDomains.some(domain => path.startsWith(`server/internal/${domain}/`)))) throw new Error('Future product domain scaffold before its phase');
 const runtimeDependencies = execFileSync('go', ['-C', 'server', 'list', '-deps', './cmd/api', './cmd/admin', './cmd/worker'], { cwd: root, encoding: 'utf8', windowsHide: true });
 if (/pressly\/goose|river\/rivermigrate|pgx\/v5\/stdlib|go\.mongodb|nats-io|gorm\.io|pgvector|opentelemetry/.test(runtimeDependencies)) throw new Error('Migration or forbidden dependency in a runtime binary');
 const stagedDiff = git(['diff', '--cached', '--no-ext-diff', '--unified=0']);

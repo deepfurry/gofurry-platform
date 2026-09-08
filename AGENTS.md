@@ -1,7 +1,7 @@
 # GoFurry Platform
 
 A multi-process modular monolith for furry resource discovery and exchange. P0-0
-establishes engineering infrastructure only; product domains start in later phases.
+established infrastructure; P0-1A adds identity and local public authentication.
 
 ## Start here
 
@@ -12,7 +12,7 @@ establishes engineering infrastructure only; product domains start in later phas
 4. Read related ADRs only for consequential architectural changes.
 
 `dev` is the development integration branch; `main` is a stable release snapshot.
-Work on `dev` for P0-0. Never merge, push, tag or release without explicit user
+Work on `dev` for P0 phases. Never merge, push, tag or release without explicit user
 instruction. Preserve unrelated changes and all ignored local credentials.
 
 ## Map and authority

@@ -1,0 +1,8 @@
+---
+import AccountLayout from '../layouts/AccountLayout.astro';
+import Account from '../components/Account';
+---
+<AccountLayout title="Your account" description="Choose how you appear on GoFurry.">
+  <Account client:load />
+  <noscript>Enable JavaScript to load your private account information.</noscript>
+</AccountLayout>

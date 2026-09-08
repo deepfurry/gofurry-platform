@@ -26,7 +26,7 @@ func TestHTTPStopsOnCancellation(t *testing.T) {
 	defer cancel()
 	checker := health.New(func(context.Context) error { return nil }, func(context.Context) error { return nil })
 	app := fiber.New()
-	public.Register(app, checker)
+	public.Register(app, checker, nil, nil, public.Options{Environment: "test", PublicOrigin: "http://localhost:4321"})
 	done := make(chan error, 1)
 	go func() { done <- HTTP(ctx, app, address, checker, slog.New(slog.NewJSONHandler(io.Discard, nil))) }()
 	client := http.Client{Timeout: 100 * time.Millisecond}
