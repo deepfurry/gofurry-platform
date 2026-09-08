@@ -57,7 +57,7 @@ func TestPublicOriginEnvironmentRules(t *testing.T) {
 		{"production", "https://private-value@example.com", false}, {"production", "https://example.com#fragment", false},
 		{"production", "null", false},
 	} {
-		env := map[string]string{"APP_ENV": test.environment, "PUBLIC_ORIGIN": test.origin, "DATABASE_URL": "postgres://localhost/gfp_ci", "REDIS_URL": "redis://localhost:6379", "REDIS_KEY_PREFIX": "gfp:", "HTTP_ADDR": "127.0.0.1:8080"}
+		env := map[string]string{"APP_ENV": test.environment, "PUBLIC_ORIGIN": test.origin, "CSRF_SECRET": strings.Repeat("test-only", 4), "DATABASE_URL": "postgres://localhost/gfp_ci", "REDIS_URL": "redis://localhost:6379", "REDIS_KEY_PREFIX": "gfp:", "HTTP_ADDR": "127.0.0.1:8080"}
 		cfg, err := load("api", func(k string) string { return env[k] })
 		if (err == nil) != test.valid {
 			t.Error("PUBLIC_ORIGIN environment contract failed")
@@ -71,5 +71,34 @@ func TestPublicOriginEnvironmentRules(t *testing.T) {
 		if _, err := load("admin", func(k string) string { return env[k] }); err != nil {
 			t.Error("Public Origin was required by Admin")
 		}
+	}
+}
+
+func TestSecurityEnvironmentRules(t *testing.T) {
+	base := map[string]string{"APP_ENV": "production", "PUBLIC_ORIGIN": "https://example.com", "DATABASE_URL": "postgres://localhost/gfp_ci", "REDIS_URL": "redis://localhost:6379", "REDIS_KEY_PREFIX": "gfp:", "HTTP_ADDR": "127.0.0.1:8080"}
+	for _, secret := range []string{"", "too-short", DevelopmentCSRFSecret} {
+		base["CSRF_SECRET"] = secret
+		if _, err := load("api", func(k string) string { return base[k] }); err == nil {
+			t.Fatal("unsafe production secret accepted")
+		}
+	}
+	base["CSRF_SECRET"] = strings.Repeat("private-fixture", 3)
+	cfg, err := load("api", func(k string) string { return base[k] })
+	if err != nil || cfg.MailMode != "disabled" {
+		t.Fatal("production default fabricated a delivery provider")
+	}
+	base["MAIL_MODE"] = "local"
+	if _, err := load("api", func(k string) string { return base[k] }); err == nil {
+		t.Fatal("production capture accepted")
+	}
+	base["APP_ENV"] = "development"
+	base["CSRF_SECRET"] = ""
+	cfg, err = load("api", func(k string) string { return base[k] })
+	if err != nil || cfg.CSRFSecret != DevelopmentCSRFSecret || cfg.MailMode != "local" {
+		t.Fatal("explicit development defaults failed")
+	}
+	base["MAIL_LOCAL_DIR"] = "../public-capture"
+	if _, err := load("api", func(k string) string { return base[k] }); err == nil {
+		t.Fatal("non-private capture path accepted")
 	}
 }

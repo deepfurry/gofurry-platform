@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -17,7 +18,12 @@ type Config struct {
 	RedisKeyPrefix string
 	RiverSchema    string
 	PublicOrigin   string
+	CSRFSecret     string
+	MailMode       string
+	MailLocalDir   string
 }
+
+const DevelopmentCSRFSecret = "gofurry-development-only-csrf-secret"
 
 func Load(service string) (Config, error) {
 	return load(service, os.Getenv)
@@ -53,6 +59,39 @@ func load(service string, env func(string) string) (Config, error) {
 		if err != nil || u.Hostname() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" ||
 			(u.Scheme != "http" && u.Scheme != "https") || (c.Environment == "production" && u.Scheme != "https") {
 			return Config{}, errors.New("PUBLIC_ORIGIN must be an exact origin (HTTPS required in production)")
+		}
+		c.CSRFSecret = env("CSRF_SECRET")
+		if c.CSRFSecret == "" && c.Environment != "production" {
+			c.CSRFSecret = DevelopmentCSRFSecret
+		}
+		if len(c.CSRFSecret) < 32 || (c.Environment == "production" && c.CSRFSecret == DevelopmentCSRFSecret) {
+			return Config{}, errors.New("CSRF_SECRET must contain at least 32 bytes; production requires a private secret")
+		}
+		c.MailMode = env("MAIL_MODE")
+		if c.MailMode == "" {
+			c.MailMode = "local"
+			if c.Environment == "production" {
+				c.MailMode = "disabled"
+			}
+		}
+		if c.MailMode != "local" && c.MailMode != "disabled" {
+			return Config{}, errors.New("MAIL_MODE must be local or disabled")
+		}
+		if c.Environment == "production" && c.MailMode == "local" {
+			return Config{}, errors.New("production cannot use local mail capture")
+		}
+		if c.MailMode == "local" {
+			c.MailLocalDir = env("MAIL_LOCAL_DIR")
+			if c.MailLocalDir == "" {
+				c.MailLocalDir = filepath.Join("..", ".local", "mail")
+			}
+			root, _ := filepath.Abs(filepath.Join("..", ".local"))
+			dir, err := filepath.Abs(c.MailLocalDir)
+			rel, relErr := filepath.Rel(root, dir)
+			if err != nil || relErr != nil || rel == "." || !filepath.IsLocal(rel) {
+				return Config{}, errors.New("MAIL_LOCAL_DIR must be inside the repository private .local directory (launch from server)")
+			}
+			c.MailLocalDir = dir
 		}
 	}
 	if service != "migrator" {

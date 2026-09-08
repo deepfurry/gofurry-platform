@@ -8,6 +8,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AppAuthChallenge struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	AuthIdentityID pgtype.UUID
+	Purpose        string
+	TokenHash      string
+	CreatedAt      pgtype.Timestamptz
+	ExpiresAt      pgtype.Timestamptz
+	ConsumedAt     pgtype.Timestamptz
+	InvalidatedAt  pgtype.Timestamptz
+}
+
 type AppAuthIdentity struct {
 	ID              pgtype.UUID
 	UserID          pgtype.UUID
@@ -25,6 +37,14 @@ type AppPasswordCredential struct {
 	PasswordUpdatedAt pgtype.Timestamptz
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
+}
+
+type AppSecurityEvent struct {
+	ID         int64
+	UserID     pgtype.UUID
+	SessionID  pgtype.UUID
+	EventType  string
+	OccurredAt pgtype.Timestamptz
 }
 
 type AppSession struct {

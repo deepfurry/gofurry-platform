@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: GoFurry Public API
   version: 0.1.0
-  description: Public health, local authentication and basic profiles. Authentication hardening continues in later P0-1 phases.
+  description: Public health, local authentication, session security and basic profiles. Unsafe requests require exact PUBLIC_ORIGIN; authenticated unsafe requests also require a session-bound CSRF header.
 paths:
   /auth/register:
     post:
@@ -41,6 +41,7 @@ paths:
   /auth/logout:
     post:
       operationId: logout
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
       description: Revoke the current public session and clear its cookie. Requires exact PUBLIC_ORIGIN.
       security: [{PublicSession: []}]
       responses:
@@ -66,6 +67,7 @@ paths:
   /me/profile:
     patch:
       operationId: updateProfile
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
       description: Omitted fields are retained; null clears nullable fields. Requires exact PUBLIC_ORIGIN.
       security: [{PublicSession: []}]
       requestBody:
@@ -84,6 +86,189 @@ paths:
         '403':
           $ref: '#/components/responses/Error'
         '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /auth/csrf:
+    get:
+      operationId: getCsrf
+      security: [{PublicSession: []}]
+      responses:
+        '200':
+          description: Session-bound HMAC; Cache-Control no-store. Keep only in browser memory and discard on session rotation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfToken'
+        '401':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /auth/email/verification/request:
+    post:
+      operationId: requestEmailVerification
+      security: [{PublicSession: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /auth/email/verification:
+    post:
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChallengeToken'
+      responses:
+        '204':
+          description: Email verified; challenge consumed once.
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /auth/password/reset/request:
+    post:
+      operationId: requestPasswordReset
+      description: Identical accepted response for eligible, unknown or inactive accounts and delivery failures. Does not reveal account existence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /auth/password/reset:
+    post:
+      operationId: resetPassword
+      description: Consume challenge, replace password, revoke all public sessions and issue one new session. Does not verify email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordReset'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /auth/password/change:
+    post:
+      operationId: changePassword
+      security: [{PublicSession: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChange'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /auth/reauthenticate:
+    post:
+      operationId: reauthenticate
+      description: Verify password and rotate the current session, setting authenticated_at to now.
+      security: [{PublicSession: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reauthentication'
+      responses:
+        '204':
+          description: Reauthenticated; Set-Cookie contains a replacement HttpOnly session.
+          headers:
+            Set-Cookie:
+              schema: {type: string}
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /me/sessions:
+    get:
+      operationId: listSessions
+      security: [{PublicSession: []}]
+      responses:
+        '200':
+          description: Only this user's active public sessions; Cache-Control no-store. No token or token hash.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionList'
+        '401':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /me/sessions/{session_id}:
+    delete:
+      operationId: revokeSession
+      security: [{PublicSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/CSRF'
+        - in: path
+          name: session_id
+          required: true
+          schema: {type: string, format: uuid, x-go-type: string}
+      responses:
+        '204':
+          description: Owned public session revoked. Revoking the current session also clears its cookie.
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /me/sessions/revoke-others:
+    post:
+      operationId: revokeOtherSessions
+      security: [{PublicSession: []}]
+      parameters: [{$ref: '#/components/parameters/CSRF'}]
+      responses:
+        '204':
+          description: All other public sessions revoked; current session preserved.
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
           $ref: '#/components/responses/Error'
         '500':
           $ref: '#/components/responses/Error'
@@ -134,6 +319,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Ready'
 components:
+  parameters:
+    CSRF:
+      in: header
+      name: X-CSRF-Token
+      required: true
+      description: Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+      schema: {type: string}
   securitySchemes:
     PublicSession:
       type: apiKey
@@ -148,6 +340,12 @@ components:
           schema:
             $ref: '#/components/schemas/Credentials'
   responses:
+    Accepted:
+      description: Request accepted, including cooldown or ineligible account. No challenge token is returned.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Accepted'
     Authenticated:
       description: Current user; a new opaque session is delivered only through Set-Cookie.
       headers:
@@ -172,6 +370,72 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
   schemas:
+    Accepted:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message: {type: string}
+    CsrfToken:
+      type: object
+      additionalProperties: false
+      required: [csrf_token]
+      properties:
+        csrf_token: {type: string}
+    ChallengeToken:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token: {type: string, writeOnly: true, minLength: 43, maxLength: 43}
+    ResetRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: {type: string, maxLength: 254}
+    PasswordReset:
+      type: object
+      additionalProperties: false
+      required: [token, new_password]
+      properties:
+        token: {type: string, writeOnly: true, minLength: 43, maxLength: 43}
+        new_password: {type: string, writeOnly: true, minLength: 15, maxLength: 128}
+    PasswordChange:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password: {type: string, writeOnly: true, minLength: 15, maxLength: 128}
+        new_password: {type: string, writeOnly: true, minLength: 15, maxLength: 128}
+    Reauthentication:
+      type: object
+      additionalProperties: false
+      required: [password]
+      properties:
+        password: {type: string, writeOnly: true, minLength: 15, maxLength: 128}
+    SessionList:
+      type: object
+      additionalProperties: false
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+    Session:
+      type: object
+      additionalProperties: false
+      required: [id, auth_method, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, current]
+      properties:
+        id: {type: string, format: uuid, x-go-type: string}
+        auth_method: {type: string}
+        authenticated_at: {type: string, format: date-time}
+        created_at: {type: string, format: date-time}
+        last_seen_at: {type: string, format: date-time}
+        idle_expires_at: {type: string, format: date-time}
+        absolute_expires_at: {type: string, format: date-time}
+        current: {type: boolean}
     Credentials:
       type: object
       additionalProperties: false
@@ -194,7 +458,7 @@ components:
       properties:
         code:
           type: string
-          enum: [VALIDATION_ERROR, AUTH_EMAIL_ALREADY_REGISTERED, AUTH_INVALID_CREDENTIALS, AUTH_UNAUTHENTICATED, AUTH_ACCOUNT_DISABLED, PROFILE_HANDLE_UNAVAILABLE, PROFILE_NOT_FOUND, ORIGIN_FORBIDDEN, INTERNAL_ERROR]
+          enum: [VALIDATION_ERROR, AUTH_EMAIL_ALREADY_REGISTERED, AUTH_INVALID_CREDENTIALS, AUTH_UNAUTHENTICATED, AUTH_ACCOUNT_DISABLED, PROFILE_HANDLE_UNAVAILABLE, PROFILE_NOT_FOUND, ORIGIN_FORBIDDEN, CSRF_INVALID, AUTH_CHALLENGE_INVALID, AUTH_REAUTH_FAILED, AUTH_SESSION_NOT_FOUND, MAIL_UNAVAILABLE, INTERNAL_ERROR]
         message:
           type: string
     Handle:

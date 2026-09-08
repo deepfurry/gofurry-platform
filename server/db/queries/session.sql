@@ -1,7 +1,7 @@
 -- name: CreateSession :execrows
 INSERT INTO app.sessions (id, user_id, kind, auth_method, token_hash, authenticated_at, created_at,
                           last_seen_at, idle_expires_at, absolute_expires_at)
-SELECT sqlc.arg(id), u.id, 'public', 'password', sqlc.arg(token_hash), sqlc.arg(now), sqlc.arg(now),
+SELECT sqlc.arg(id), u.id, 'public', sqlc.arg(auth_method), sqlc.arg(token_hash), sqlc.arg(now), sqlc.arg(now),
        sqlc.arg(now), sqlc.arg(idle_expires_at), sqlc.arg(absolute_expires_at)
 FROM app.users u JOIN app.password_credentials c ON c.user_id = u.id
 WHERE u.id = sqlc.arg(user_id) AND u.account_state = 'active' AND u.deleted_at IS NULL
@@ -25,3 +25,28 @@ WHERE s.id = sqlc.arg(id) AND s.kind = 'public' AND s.revoked_at IS NULL
 -- name: RevokeSession :exec
 UPDATE app.sessions SET revoked_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND kind = 'public' AND revoked_at IS NULL;
+
+-- name: GetActivePublicSessionByID :one
+SELECT s.id FROM app.sessions s JOIN app.users u ON u.id = s.user_id
+WHERE s.id = sqlc.arg(id) AND s.user_id = sqlc.arg(user_id) AND s.kind = 'public'
+  AND s.revoked_at IS NULL AND s.idle_expires_at > sqlc.arg(now) AND s.absolute_expires_at > sqlc.arg(now)
+  AND u.account_state = 'active' AND u.deleted_at IS NULL;
+
+-- name: ListActivePublicSessions :many
+SELECT id, auth_method, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at
+FROM app.sessions WHERE user_id = sqlc.arg(user_id) AND kind = 'public' AND revoked_at IS NULL
+  AND idle_expires_at > sqlc.arg(now) AND absolute_expires_at > sqlc.arg(now)
+ORDER BY created_at DESC, id DESC;
+
+-- name: RevokePublicSessionByID :execrows
+UPDATE app.sessions SET revoked_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND kind = 'public' AND revoked_at IS NULL
+  AND idle_expires_at > sqlc.arg(now) AND absolute_expires_at > sqlc.arg(now);
+
+-- name: RevokeOtherPublicSessions :exec
+UPDATE app.sessions SET revoked_at = sqlc.arg(now)
+WHERE user_id = sqlc.arg(user_id) AND id <> sqlc.arg(current_id) AND kind = 'public' AND revoked_at IS NULL;
+
+-- name: RevokeAllPublicSessions :exec
+UPDATE app.sessions SET revoked_at = sqlc.arg(now)
+WHERE user_id = sqlc.arg(user_id) AND kind = 'public' AND revoked_at IS NULL;

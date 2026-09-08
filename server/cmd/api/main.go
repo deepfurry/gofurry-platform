@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/deepfurry/gofurry-platform/server/internal/config"
 	"github.com/deepfurry/gofurry-platform/server/internal/database"
 	"github.com/deepfurry/gofurry-platform/server/internal/identity"
+	"github.com/deepfurry/gofurry-platform/server/internal/mail"
 	"github.com/deepfurry/gofurry-platform/server/internal/redisstore"
 	platformruntime "github.com/deepfurry/gofurry-platform/server/internal/runtime"
 	"github.com/deepfurry/gofurry-platform/server/internal/transport/health"
@@ -45,11 +47,20 @@ func run() error {
 	}
 	defer store.Close()
 	checker := health.New(func(ctx context.Context) error { return database.Ready(ctx, pool) }, store.Ping)
-	authentication, err := auth.New(pool)
+	var mailer auth.ChallengeMailer = mail.Disabled{}
+	if c.MailMode == "local" {
+		capture, err := mail.NewLocal(filepath.Join("..", ".local"), c.MailLocalDir, c.PublicOrigin)
+		if err != nil {
+			return err
+		}
+		defer capture.Close()
+		mailer = capture
+	}
+	authentication, err := auth.New(pool, mailer)
 	if err != nil {
 		return err
 	}
 	app := fiber.New(fiber.Config{ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, BodyLimit: 8192})
-	public.Register(app, checker, authentication, identity.New(pool), public.Options{Environment: c.Environment, PublicOrigin: c.PublicOrigin})
+	public.Register(app, checker, authentication, identity.New(pool), public.Options{Environment: c.Environment, PublicOrigin: c.PublicOrigin, CSRFSecret: c.CSRFSecret})
 	return platformruntime.HTTP(ctx, app, c.HTTPAddr, checker, logger)
 }

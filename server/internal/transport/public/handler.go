@@ -16,7 +16,7 @@ type Handler struct {
 	identity *identity.App
 	options  Options
 }
-type Options struct{ Environment, PublicOrigin string }
+type Options struct{ Environment, PublicOrigin, CSRFSecret string }
 
 var _ generated.ServerInterface = (*Handler)(nil)
 
@@ -30,9 +30,11 @@ func Register(router fiber.Router, checker *health.Checker, authentication *auth
 			return c.Next()
 		})
 	}
-	// Only the P0-1A auth/profile routes get this browser-origin boundary.
-	for _, path := range []string{"/auth/register", "/auth/login", "/auth/logout", "/me/profile"} {
+	for _, path := range []string{"/auth", "/me"} {
 		router.Use(path, h.originGuard)
+	}
+	for _, path := range []string{"/auth/logout", "/me/profile", "/auth/email/verification/request", "/auth/password/change", "/auth/reauthenticate", "/me/sessions"} {
+		router.Use(path, h.csrfGuard)
 	}
 	generated.RegisterHandlers(router, h)
 }

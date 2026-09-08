@@ -14,15 +14,16 @@ import (
 const createSession = `-- name: CreateSession :execrows
 INSERT INTO app.sessions (id, user_id, kind, auth_method, token_hash, authenticated_at, created_at,
                           last_seen_at, idle_expires_at, absolute_expires_at)
-SELECT $1, u.id, 'public', 'password', $2, $3, $3,
-       $3, $4, $5
+SELECT $1, u.id, 'public', $2, $3, $4, $4,
+       $4, $5, $6
 FROM app.users u JOIN app.password_credentials c ON c.user_id = u.id
-WHERE u.id = $6 AND u.account_state = 'active' AND u.deleted_at IS NULL
-  AND c.password_hash = $7
+WHERE u.id = $7 AND u.account_state = 'active' AND u.deleted_at IS NULL
+  AND c.password_hash = $8
 `
 
 type CreateSessionParams struct {
 	ID                pgtype.UUID
+	AuthMethod        string
 	TokenHash         []byte
 	Now               pgtype.Timestamptz
 	IdleExpiresAt     pgtype.Timestamptz
@@ -34,6 +35,7 @@ type CreateSessionParams struct {
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, createSession,
 		arg.ID,
+		arg.AuthMethod,
 		arg.TokenHash,
 		arg.Now,
 		arg.IdleExpiresAt,
@@ -81,6 +83,127 @@ func (q *Queries) FindActiveSessionByTokenHash(ctx context.Context, arg FindActi
 		&i.AbsoluteExpiresAt,
 	)
 	return i, err
+}
+
+const getActivePublicSessionByID = `-- name: GetActivePublicSessionByID :one
+SELECT s.id FROM app.sessions s JOIN app.users u ON u.id = s.user_id
+WHERE s.id = $1 AND s.user_id = $2 AND s.kind = 'public'
+  AND s.revoked_at IS NULL AND s.idle_expires_at > $3 AND s.absolute_expires_at > $3
+  AND u.account_state = 'active' AND u.deleted_at IS NULL
+`
+
+type GetActivePublicSessionByIDParams struct {
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+	Now    pgtype.Timestamptz
+}
+
+func (q *Queries) GetActivePublicSessionByID(ctx context.Context, arg GetActivePublicSessionByIDParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getActivePublicSessionByID, arg.ID, arg.UserID, arg.Now)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const listActivePublicSessions = `-- name: ListActivePublicSessions :many
+SELECT id, auth_method, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at
+FROM app.sessions WHERE user_id = $1 AND kind = 'public' AND revoked_at IS NULL
+  AND idle_expires_at > $2 AND absolute_expires_at > $2
+ORDER BY created_at DESC, id DESC
+`
+
+type ListActivePublicSessionsParams struct {
+	UserID pgtype.UUID
+	Now    pgtype.Timestamptz
+}
+
+type ListActivePublicSessionsRow struct {
+	ID                pgtype.UUID
+	AuthMethod        string
+	AuthenticatedAt   pgtype.Timestamptz
+	CreatedAt         pgtype.Timestamptz
+	LastSeenAt        pgtype.Timestamptz
+	IdleExpiresAt     pgtype.Timestamptz
+	AbsoluteExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) ListActivePublicSessions(ctx context.Context, arg ListActivePublicSessionsParams) ([]ListActivePublicSessionsRow, error) {
+	rows, err := q.db.Query(ctx, listActivePublicSessions, arg.UserID, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivePublicSessionsRow{}
+	for rows.Next() {
+		var i ListActivePublicSessionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AuthMethod,
+			&i.AuthenticatedAt,
+			&i.CreatedAt,
+			&i.LastSeenAt,
+			&i.IdleExpiresAt,
+			&i.AbsoluteExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const revokeAllPublicSessions = `-- name: RevokeAllPublicSessions :exec
+UPDATE app.sessions SET revoked_at = $1
+WHERE user_id = $2 AND kind = 'public' AND revoked_at IS NULL
+`
+
+type RevokeAllPublicSessionsParams struct {
+	Now    pgtype.Timestamptz
+	UserID pgtype.UUID
+}
+
+func (q *Queries) RevokeAllPublicSessions(ctx context.Context, arg RevokeAllPublicSessionsParams) error {
+	_, err := q.db.Exec(ctx, revokeAllPublicSessions, arg.Now, arg.UserID)
+	return err
+}
+
+const revokeOtherPublicSessions = `-- name: RevokeOtherPublicSessions :exec
+UPDATE app.sessions SET revoked_at = $1
+WHERE user_id = $2 AND id <> $3 AND kind = 'public' AND revoked_at IS NULL
+`
+
+type RevokeOtherPublicSessionsParams struct {
+	Now       pgtype.Timestamptz
+	UserID    pgtype.UUID
+	CurrentID pgtype.UUID
+}
+
+func (q *Queries) RevokeOtherPublicSessions(ctx context.Context, arg RevokeOtherPublicSessionsParams) error {
+	_, err := q.db.Exec(ctx, revokeOtherPublicSessions, arg.Now, arg.UserID, arg.CurrentID)
+	return err
+}
+
+const revokePublicSessionByID = `-- name: RevokePublicSessionByID :execrows
+UPDATE app.sessions SET revoked_at = $1
+WHERE id = $2 AND user_id = $3 AND kind = 'public' AND revoked_at IS NULL
+  AND idle_expires_at > $1 AND absolute_expires_at > $1
+`
+
+type RevokePublicSessionByIDParams struct {
+	Now    pgtype.Timestamptz
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
+func (q *Queries) RevokePublicSessionByID(ctx context.Context, arg RevokePublicSessionByIDParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokePublicSessionByID, arg.Now, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const revokeSession = `-- name: RevokeSession :exec

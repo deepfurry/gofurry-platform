@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 	"uuid"
 
@@ -27,6 +28,7 @@ type App struct {
 	pool      *pgxpool.Pool
 	dummyHash string
 	now       func() time.Time
+	mailer    ChallengeMailer
 }
 type Grant struct {
 	Me        identity.Me
@@ -34,13 +36,16 @@ type Grant struct {
 	ExpiresAt time.Time
 }
 
-func New(pool *pgxpool.Pool) (*App, error) {
+func New(pool *pgxpool.Pool, mailer ChallengeMailer) (*App, error) {
+	if mailer == nil {
+		return nil, errors.New("challenge mailer is required")
+	}
 	// One random dummy per process, never logged or persisted.
 	dummy, err := HashPassword(newToken())
 	if err != nil {
 		return nil, err
 	}
-	return &App{pool: pool, dummyHash: dummy, now: time.Now}, nil
+	return &App{pool: pool, dummyHash: dummy, now: time.Now, mailer: mailer}, nil
 }
 
 func (a *App) Register(ctx context.Context, email, password string) (Grant, error) {
@@ -77,7 +82,14 @@ func (a *App) Register(ctx context.Context, email, password string) (Grant, erro
 	if err = q.CreatePasswordCredential(ctx, sqlc.CreatePasswordCredentialParams{UserID: dbID(userID), PasswordHash: hash, PasswordUpdatedAt: timestamp(now)}); err != nil {
 		return Grant{}, database.SafeError("create password credential", err)
 	}
-	if err = createSession(ctx, q, userID, sessionID, token, hash, now); err != nil {
+	if err = createSession(ctx, q, userID, sessionID, token, hash, "password", now); err != nil {
+		return Grant{}, err
+	}
+	pending, err := issueChallenge(ctx, q, userID, identityID, email, purposeVerify, now)
+	if err != nil {
+		return Grant{}, err
+	}
+	if err = recordEvent(ctx, q, accountRegistered, userID, sessionID, now); err != nil {
 		return Grant{}, err
 	}
 	me, err := identity.ReadMe(ctx, q, userID)
@@ -86,6 +98,9 @@ func (a *App) Register(ctx context.Context, email, password string) (Grant, erro
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return Grant{}, database.SafeError("commit registration", err)
+	}
+	if err = a.deliver(ctx, pending); err != nil {
+		slog.Warn("registration challenge delivery unavailable", "component", "auth")
 	}
 	return Grant{Me: me, Token: token, ExpiresAt: now.Add(AbsoluteLifetime)}, nil
 }
@@ -138,6 +153,14 @@ func (a *App) finishLogin(ctx context.Context, row sqlc.FindLocalCredentialByEma
 	}
 	defer tx.Rollback(ctx)
 	q := sqlc.New(tx)
+	current, err := lockCredential(ctx, q, uuid.UUID(row.ID.Bytes))
+	if err != nil {
+		return Grant{}, err
+	}
+	if current != row.PasswordHash {
+		return Grant{}, errCredentialChanged
+	}
+	now = a.now().UTC()
 	verifiedHash := row.PasswordHash
 	if upgraded {
 		n, err := q.CompareAndSwapPasswordHash(ctx, sqlc.CompareAndSwapPasswordHashParams{UserID: row.ID, OldHash: row.PasswordHash, NewHash: replacement, Now: timestamp(now)})
@@ -150,7 +173,10 @@ func (a *App) finishLogin(ctx context.Context, row sqlc.FindLocalCredentialByEma
 		verifiedHash = replacement
 	}
 	userID := uuid.UUID(row.ID.Bytes)
-	if err = createSession(ctx, q, userID, sessionID, token, verifiedHash, now); err != nil {
+	if err = createSession(ctx, q, userID, sessionID, token, verifiedHash, "password", now); err != nil {
+		return Grant{}, err
+	}
+	if err = recordEvent(ctx, q, loginSucceeded, userID, sessionID, now); err != nil {
 		return Grant{}, err
 	}
 	me, err := identity.ReadMe(ctx, q, userID)

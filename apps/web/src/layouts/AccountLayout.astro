@@ -4,6 +4,8 @@ import '../styles/layout.css';
 import '../styles/page.scss';
 interface Props { title: string; description: string }
 const { title, description } = Astro.props;
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+Astro.response.headers.set('Cache-Control', 'no-store');
 ---
 <!doctype html>
 <html lang="en">
@@ -11,6 +13,7 @@ const { title, description } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
     <title>{title} · GoFurry</title>
     <meta name="description" content={description} />
   </head>

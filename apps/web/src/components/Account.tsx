@@ -1,6 +1,8 @@
 import { useEffect, useState, type SubmitEvent } from 'react';
 import { getMe, logout, updateProfile, type Me } from '@gofurry/api-client/public';
 import styles from './Account.module.scss';
+import { authenticatedRequest } from '../lib/security';
+import AccountSecurity from './AccountSecurity';
 
 export default function Account() {
   const [me, setMe] = useState<Me | null>(null);
@@ -30,7 +32,7 @@ export default function Account() {
     }
     setBusy(true); setMessage('');
     try {
-      const response = await updateProfile({ handle, display_name: displayName, bio, search_engine_indexing: values.has('search_engine_indexing') }, { credentials: 'same-origin' });
+      const response = await updateProfile({ handle, display_name: displayName, bio, search_engine_indexing: values.has('search_engine_indexing') }, await authenticatedRequest());
       if (response.status === 200) { setMe(response.data); setRevision(value => value + 1); setMessage('Profile saved.'); }
       else if (response.status === 401) { setMe(null); setUnauthenticated(true); }
       else setMessage(response.data.message);
@@ -40,7 +42,7 @@ export default function Account() {
   async function signOut() {
     setBusy(true); setMessage('');
     try {
-      const response = await logout({ credentials: 'same-origin' });
+      const response = await logout(await authenticatedRequest());
       if (response.status === 204 || response.status === 401) { setMe(null); window.location.assign('/login'); }
       else setMessage(response.data.message);
     } catch { setMessage('Unable to log out. Please try again.'); }
@@ -68,6 +70,7 @@ export default function Account() {
       <button type="submit" className={styles.button} disabled={busy}>{busy ? 'Please wait…' : 'Save profile'}</button>
     </form>
     <p role="status" aria-live="polite">{message}</p>
+    <AccountSecurity me={me} onMe={setMe} />
     <button type="button" onClick={() => { void signOut(); }} className={styles.button} disabled={busy}>Log out</button>
   </div>;
 }

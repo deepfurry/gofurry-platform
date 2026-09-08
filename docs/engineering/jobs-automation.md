@@ -63,6 +63,14 @@ Rule:
 
 > **Business state synchronously; side effects asynchronously.**
 
+P0-1B has one explicit exception: authentication verification/reset challenge mail
+is delivered directly after the auth transaction commits. Raw single-use tokens may
+exist only in memory, private local capture and the recipient's browser/mail; they
+must never be persisted in River arguments or another queue. Auth owns this mail
+interface, and `internal/mail` supplies local capture only. No general mail queue or
+production provider is introduced by this exception. Other business mail continues
+to follow the asynchronous rule above.
+
 ## Transactional Enqueue
 
 Use River transaction enqueue when the job must exist if and only if the business transaction commits.

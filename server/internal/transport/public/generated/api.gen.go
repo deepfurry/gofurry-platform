@@ -5,6 +5,7 @@ package generated
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -14,10 +15,15 @@ import (
 // Defines values for ApiErrorCode.
 const (
 	AUTHACCOUNTDISABLED        ApiErrorCode = "AUTH_ACCOUNT_DISABLED"
+	AUTHCHALLENGEINVALID       ApiErrorCode = "AUTH_CHALLENGE_INVALID"
 	AUTHEMAILALREADYREGISTERED ApiErrorCode = "AUTH_EMAIL_ALREADY_REGISTERED"
 	AUTHINVALIDCREDENTIALS     ApiErrorCode = "AUTH_INVALID_CREDENTIALS"
+	AUTHREAUTHFAILED           ApiErrorCode = "AUTH_REAUTH_FAILED"
+	AUTHSESSIONNOTFOUND        ApiErrorCode = "AUTH_SESSION_NOT_FOUND"
 	AUTHUNAUTHENTICATED        ApiErrorCode = "AUTH_UNAUTHENTICATED"
+	CSRFINVALID                ApiErrorCode = "CSRF_INVALID"
 	INTERNALERROR              ApiErrorCode = "INTERNAL_ERROR"
+	MAILUNAVAILABLE            ApiErrorCode = "MAIL_UNAVAILABLE"
 	ORIGINFORBIDDEN            ApiErrorCode = "ORIGIN_FORBIDDEN"
 	PROFILEHANDLEUNAVAILABLE   ApiErrorCode = "PROFILE_HANDLE_UNAVAILABLE"
 	PROFILENOTFOUND            ApiErrorCode = "PROFILE_NOT_FOUND"
@@ -29,13 +35,23 @@ func (e ApiErrorCode) Valid() bool {
 	switch e {
 	case AUTHACCOUNTDISABLED:
 		return true
+	case AUTHCHALLENGEINVALID:
+		return true
 	case AUTHEMAILALREADYREGISTERED:
 		return true
 	case AUTHINVALIDCREDENTIALS:
 		return true
+	case AUTHREAUTHFAILED:
+		return true
+	case AUTHSESSIONNOTFOUND:
+		return true
 	case AUTHUNAUTHENTICATED:
 		return true
+	case CSRFINVALID:
+		return true
 	case INTERNALERROR:
+		return true
+	case MAILUNAVAILABLE:
 		return true
 	case ORIGINFORBIDDEN:
 		return true
@@ -137,6 +153,11 @@ func (e ReadyStatus) Valid() bool {
 	}
 }
 
+// Accepted defines model for Accepted.
+type Accepted struct {
+	Message string `json:"message"`
+}
+
 // ApiError defines model for ApiError.
 type ApiError struct {
 	Code    ApiErrorCode `json:"code"`
@@ -146,6 +167,11 @@ type ApiError struct {
 // ApiErrorCode defines model for ApiError.Code.
 type ApiErrorCode string
 
+// ChallengeToken defines model for ChallengeToken.
+type ChallengeToken struct {
+	Token *string `json:"token,omitempty"`
+}
+
 // Credentials defines model for Credentials.
 type Credentials struct {
 	// Email Plain email; surrounding whitespace is trimmed and lookup is lowercase. Dots and plus tags are preserved.
@@ -153,6 +179,11 @@ type Credentials struct {
 
 	// Password Unicode code points; no trimming, normalization or composition requirements.
 	Password *string `json:"password,omitempty"`
+}
+
+// CsrfToken defines model for CsrfToken.
+type CsrfToken struct {
+	CsrfToken string `json:"csrf_token"`
 }
 
 // Handle defines model for Handle.
@@ -178,6 +209,18 @@ type Me struct {
 
 // MeAccountState defines model for Me.AccountState.
 type MeAccountState string
+
+// PasswordChange defines model for PasswordChange.
+type PasswordChange struct {
+	CurrentPassword *string `json:"current_password,omitempty"`
+	NewPassword     *string `json:"new_password,omitempty"`
+}
+
+// PasswordReset defines model for PasswordReset.
+type PasswordReset struct {
+	NewPassword *string `json:"new_password,omitempty"`
+	Token       *string `json:"token,omitempty"`
+}
 
 // Profile defines model for Profile.
 type Profile struct {
@@ -218,6 +261,36 @@ type ReadyRedis string
 // ReadyStatus defines model for Ready.Status.
 type ReadyStatus string
 
+// Reauthentication defines model for Reauthentication.
+type Reauthentication struct {
+	Password *string `json:"password,omitempty"`
+}
+
+// ResetRequest defines model for ResetRequest.
+type ResetRequest struct {
+	Email string `json:"email"`
+}
+
+// Session defines model for Session.
+type Session struct {
+	AbsoluteExpiresAt time.Time `json:"absolute_expires_at"`
+	AuthMethod        string    `json:"auth_method"`
+	AuthenticatedAt   time.Time `json:"authenticated_at"`
+	CreatedAt         time.Time `json:"created_at"`
+	Current           bool      `json:"current"`
+	Id                string    `json:"id"`
+	IdleExpiresAt     time.Time `json:"idle_expires_at"`
+	LastSeenAt        time.Time `json:"last_seen_at"`
+}
+
+// SessionList defines model for SessionList.
+type SessionList struct {
+	Sessions []Session `json:"sessions"`
+}
+
+// CSRF defines model for CSRF.
+type CSRF = string
+
 // Authenticated defines model for Authenticated.
 type Authenticated = Me
 
@@ -227,8 +300,65 @@ type CurrentUser = Me
 // Error defines model for Error.
 type Error = ApiError
 
+// RequestEmailVerificationParams defines parameters for RequestEmailVerification.
+type RequestEmailVerificationParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// LogoutParams defines parameters for Logout.
+type LogoutParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// ChangePasswordParams defines parameters for ChangePassword.
+type ChangePasswordParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// ReauthenticateParams defines parameters for Reauthenticate.
+type ReauthenticateParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// UpdateProfileParams defines parameters for UpdateProfile.
+type UpdateProfileParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// RevokeOtherSessionsParams defines parameters for RevokeOtherSessions.
+type RevokeOtherSessionsParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// RevokeSessionParams defines parameters for RevokeSession.
+type RevokeSessionParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// VerifyEmailJSONRequestBody defines body for VerifyEmail for application/json ContentType.
+type VerifyEmailJSONRequestBody = ChallengeToken
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = Credentials
+
+// ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
+type ChangePasswordJSONRequestBody = PasswordChange
+
+// ResetPasswordJSONRequestBody defines body for ResetPassword for application/json ContentType.
+type ResetPasswordJSONRequestBody = PasswordReset
+
+// RequestPasswordResetJSONRequestBody defines body for RequestPasswordReset for application/json ContentType.
+type RequestPasswordResetJSONRequestBody = ResetRequest
+
+// ReauthenticateJSONRequestBody defines body for Reauthenticate for application/json ContentType.
+type ReauthenticateJSONRequestBody = Reauthentication
 
 // RegisterJSONRequestBody defines body for Register for application/json ContentType.
 type RegisterJSONRequestBody = Credentials
@@ -239,11 +369,32 @@ type UpdateProfileJSONRequestBody = ProfileUpdate
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (GET /auth/csrf)
+	GetCsrf(c fiber.Ctx) error
+
+	// (POST /auth/email/verification)
+	VerifyEmail(c fiber.Ctx) error
+
+	// (POST /auth/email/verification/request)
+	RequestEmailVerification(c fiber.Ctx, params RequestEmailVerificationParams) error
+
 	// (POST /auth/login)
 	Login(c fiber.Ctx) error
 
 	// (POST /auth/logout)
-	Logout(c fiber.Ctx) error
+	Logout(c fiber.Ctx, params LogoutParams) error
+
+	// (POST /auth/password/change)
+	ChangePassword(c fiber.Ctx, params ChangePasswordParams) error
+
+	// (POST /auth/password/reset)
+	ResetPassword(c fiber.Ctx) error
+
+	// (POST /auth/password/reset/request)
+	RequestPasswordReset(c fiber.Ctx) error
+
+	// (POST /auth/reauthenticate)
+	Reauthenticate(c fiber.Ctx, params ReauthenticateParams) error
 
 	// (POST /auth/register)
 	Register(c fiber.Ctx) error
@@ -258,7 +409,16 @@ type ServerInterface interface {
 	GetMe(c fiber.Ctx) error
 
 	// (PATCH /me/profile)
-	UpdateProfile(c fiber.Ctx) error
+	UpdateProfile(c fiber.Ctx, params UpdateProfileParams) error
+
+	// (GET /me/sessions)
+	ListSessions(c fiber.Ctx) error
+
+	// (POST /me/sessions/revoke-others)
+	RevokeOtherSessions(c fiber.Ctx, params RevokeOtherSessionsParams) error
+
+	// (DELETE /me/sessions/{session_id})
+	RevokeSession(c fiber.Ctx, sessionId string, params RevokeSessionParams) error
 
 	// (GET /users/{handle})
 	GetPublicProfile(c fiber.Ctx, handle string) error
@@ -272,6 +432,87 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc fiber.Handler
 type HandlerMiddlewareFunc func(c fiber.Ctx, next fiber.Handler) error
+
+// GetCsrf operation middleware
+func (siw *ServerInterfaceWrapper) GetCsrf(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.GetCsrf(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// VerifyEmail operation middleware
+func (siw *ServerInterfaceWrapper) VerifyEmail(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.VerifyEmail(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// RequestEmailVerification operation middleware
+func (siw *ServerInterfaceWrapper) RequestEmailVerification(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RequestEmailVerificationParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.RequestEmailVerification(c, params)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
 
 // Login operation middleware
 func (siw *ServerInterfaceWrapper) Login(c fiber.Ctx) error {
@@ -294,8 +535,161 @@ func (siw *ServerInterfaceWrapper) Login(c fiber.Ctx) error {
 // Logout operation middleware
 func (siw *ServerInterfaceWrapper) Logout(c fiber.Ctx) error {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LogoutParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
 	handler := func(c fiber.Ctx) error {
-		return siw.Handler.Logout(c)
+		return siw.Handler.Logout(c, params)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// ChangePassword operation middleware
+func (siw *ServerInterfaceWrapper) ChangePassword(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ChangePasswordParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.ChangePassword(c, params)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// ResetPassword operation middleware
+func (siw *ServerInterfaceWrapper) ResetPassword(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.ResetPassword(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// RequestPasswordReset operation middleware
+func (siw *ServerInterfaceWrapper) RequestPasswordReset(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.RequestPasswordReset(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// Reauthenticate operation middleware
+func (siw *ServerInterfaceWrapper) Reauthenticate(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReauthenticateParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.Reauthenticate(c, params)
 	}
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -384,8 +778,151 @@ func (siw *ServerInterfaceWrapper) GetMe(c fiber.Ctx) error {
 // UpdateProfile operation middleware
 func (siw *ServerInterfaceWrapper) UpdateProfile(c fiber.Ctx) error {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateProfileParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
 	handler := func(c fiber.Ctx) error {
-		return siw.Handler.UpdateProfile(c)
+		return siw.Handler.UpdateProfile(c, params)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.ListSessions(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// RevokeOtherSessions operation middleware
+func (siw *ServerInterfaceWrapper) RevokeOtherSessions(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RevokeOtherSessionsParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.RevokeOtherSessions(c, params)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// RevokeSession operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSession(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "session_id" -------------
+	var sessionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "session_id", c.Params("session_id"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter session_id: %w", err).Error())
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RevokeSessionParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.RevokeSession(c, sessionId, params)
 	}
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -460,6 +997,26 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 	router.Get(options.BaseURL+"/me", wrapper.GetMe)
 
 	router.Patch(options.BaseURL+"/me/profile", wrapper.UpdateProfile)
+
+	router.Get(options.BaseURL+"/auth/csrf", wrapper.GetCsrf)
+
+	router.Post(options.BaseURL+"/auth/email/verification/request", wrapper.RequestEmailVerification)
+
+	router.Post(options.BaseURL+"/auth/email/verification", wrapper.VerifyEmail)
+
+	router.Post(options.BaseURL+"/auth/password/reset/request", wrapper.RequestPasswordReset)
+
+	router.Post(options.BaseURL+"/auth/password/reset", wrapper.ResetPassword)
+
+	router.Post(options.BaseURL+"/auth/password/change", wrapper.ChangePassword)
+
+	router.Post(options.BaseURL+"/auth/reauthenticate", wrapper.Reauthenticate)
+
+	router.Get(options.BaseURL+"/me/sessions", wrapper.ListSessions)
+
+	router.Delete(options.BaseURL+"/me/sessions/:session_id", wrapper.RevokeSession)
+
+	router.Post(options.BaseURL+"/me/sessions/revoke-others", wrapper.RevokeOtherSessions)
 
 	router.Get(options.BaseURL+"/users/:handle", wrapper.GetPublicProfile)
 

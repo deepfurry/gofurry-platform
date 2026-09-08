@@ -40,3 +40,16 @@ P0-1A grants API only the SELECT/INSERT/UPDATE rights its use cases need; Admin 
 Worker receive no identity DML. Readonly may SELECT. IDs are generated in Go with
 standard-library UUIDv7. Restrictive FKs, CHECKs and UNIQUE constraints enforce the
 account/identity/profile/session invariants; public views never SELECT credentials.
+
+Migration 3 adds `auth_challenges` and `security_events`. Challenges have one
+unconsumed/non-invalidated row per identity/purpose, enforced by a partial unique
+index. Indexed token hashes identify challenges; consumption is revalidated inside
+the transaction. Auth mutations lock the credential row before challenge/session
+writes, and run password KDFs outside transactions. Reset/change revoke public
+sessions and create their replacement atomically with the event.
+
+API may SELECT/INSERT/UPDATE challenges, INSERT events and update identity
+verification timestamps. It cannot read/update events or access their identity
+sequence directly. Admin/Worker gain no rights; readonly may SELECT. Event session
+IDs are historical references without a session FK; event users retain restrictive
+FKs. Events have no arbitrary metadata/email/credential fields.

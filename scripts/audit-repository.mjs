@@ -9,7 +9,7 @@ const tracked = git(['ls-files', '-z']).split('\0').filter(Boolean);
 const files = [...new Set(git(['ls-files', '-z', '--cached', '--others', '--exclude-standard']).split('\0').filter(Boolean))];
 const privatePath = path => path.startsWith('.local/') || /^server\/env\/.*\.local$/.test(path);
 if (tracked.some(privatePath)) throw new Error('Private local configuration is tracked; stop and untrack with user guidance');
-for (const path of ['server/env/api.local', 'server/env/admin.local', 'server/env/worker.local', 'server/env/migrator.local', '.local/readonly.env']) {
+for (const path of ['server/env/api.local', 'server/env/admin.local', 'server/env/worker.local', 'server/env/migrator.local', '.local/readonly.env', '.local/mail/capture.json']) {
   if (!git(['check-ignore', '--', path]).trim()) throw new Error(`Missing secret ignore rule: ${path}`);
 }
 
@@ -38,6 +38,7 @@ for (const path of files) {
   const content = readFileSync(join(root, path), 'utf8');
   if (/\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b|\b[\w.-]+\.ts\.net\b/.test(content)
       || /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(content)
+      || /(?:#token=|["'](?:token|csrf_token)["']\s*:\s*["'])[A-Za-z0-9_-]{43}(?=["'\s]|$)/.test(content)
       || [...privateValues].some(value => content.includes(value))) {
     throw new Error(`Potential private material detected in ${path}; values withheld`);
   }

@@ -113,7 +113,7 @@ func (h *Handler) credentials(c fiber.Ctx, registration bool) error {
 	return c.Status(code).JSON(meDTO(grant.Me))
 }
 
-func (h *Handler) Logout(c fiber.Ctx) error {
+func (h *Handler) Logout(c fiber.Ctx, _ generated.LogoutParams) error {
 	actor, err := h.actor(c)
 	if err != nil {
 		return respondError(c, err)
@@ -137,7 +137,7 @@ func (h *Handler) GetMe(c fiber.Ctx) error {
 	return c.JSON(meDTO(me))
 }
 
-func (h *Handler) UpdateProfile(c fiber.Ctx) error {
+func (h *Handler) UpdateProfile(c fiber.Ctx, _ generated.UpdateProfileParams) error {
 	actor, err := h.actor(c)
 	if err != nil {
 		return respondError(c, err)
@@ -195,6 +195,16 @@ func respondError(c fiber.Ctx, err error) error {
 		status, code, message = 404, generated.PROFILENOTFOUND, "Profile not found."
 	case errors.Is(err, errOrigin):
 		status, code, message = 403, generated.ORIGINFORBIDDEN, "Request origin is not allowed."
+	case errors.Is(err, errCSRF):
+		status, code, message = 403, generated.CSRFINVALID, "Request verification failed."
+	case errors.Is(err, auth.ErrChallengeInvalid):
+		status, code, message = 400, generated.AUTHCHALLENGEINVALID, "This link is invalid or expired."
+	case errors.Is(err, auth.ErrReauthFailed):
+		status, code, message = 401, generated.AUTHREAUTHFAILED, "Password verification failed."
+	case errors.Is(err, auth.ErrSessionNotFound):
+		status, code, message = 404, generated.AUTHSESSIONNOTFOUND, "Session not found."
+	case errors.Is(err, auth.ErrMailUnavailable):
+		status, code, message = 503, generated.MAILUNAVAILABLE, "Email delivery is unavailable. Please try again later."
 	}
 	c.Set("Cache-Control", "no-store")
 	return c.Status(status).JSON(generated.ApiError{Code: code, Message: message})

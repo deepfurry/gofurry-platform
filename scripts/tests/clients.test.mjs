@@ -33,7 +33,7 @@ test('public: auth clients preserve same-origin options, nullable PATCH fields a
     return new Response(JSON.stringify({ code: 'AUTH_UNAUTHENTICATED', message: 'Please log in.' }), { status: 401 });
   });
   const controller = new AbortController();
-  const options = { credentials: 'same-origin', signal: controller.signal };
+  const options = { credentials: 'same-origin', signal: controller.signal, headers: { 'X-CSRF-Token': 'test-only-csrf' } };
   const login = await publicClient.login({ email: 'test@example.invalid', password: 'test password only' }, options);
   assert.equal(login.status, 401);
   assert.equal(login.data.code, 'AUTH_UNAUTHENTICATED');
@@ -47,5 +47,29 @@ test('public: auth clients preserve same-origin options, nullable PATCH fields a
   for (const [, request] of calls) {
     assert.equal(request.credentials, 'same-origin');
     assert.equal(request.signal, controller.signal);
+    assert.equal(request.headers['X-CSRF-Token'], 'test-only-csrf');
   }
+});
+
+test('public: recovery and session clients preserve CSRF headers, empty 204 and safe error codes', async t => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push([url, options]);
+    if (url === '/api/auth/password/reset') return new Response(JSON.stringify({ code: 'AUTH_CHALLENGE_INVALID', message: 'Invalid link.' }), { status: 400 });
+    return new Response(null, { status: 204 });
+  });
+  const options = { credentials: 'same-origin', headers: new globalThis.Headers({ 'X-CSRF-Token': 'csrf-test-fixture' }) };
+  const reauth = await publicClient.reauthenticate({ password: 'a fixture password only' }, options);
+  assert.equal(reauth.status, 204);
+  assert.equal(reauth.data, undefined);
+  await publicClient.revokeSession('session-fixture', options);
+  await publicClient.revokeOtherSessions(options);
+  const reset = await publicClient.resetPassword({ token: 'invalid-fixture', new_password: 'a fixture password only' }, { credentials: 'same-origin' });
+  assert.equal(reset.status, 400);
+  assert.equal(reset.data.code, 'AUTH_CHALLENGE_INVALID');
+  assert.equal(new globalThis.Headers(calls[0][1].headers).get('X-CSRF-Token'), 'csrf-test-fixture');
+  assert.equal(calls[1][0], '/api/me/sessions/session-fixture');
+  assert.equal(calls[1][1].method, 'DELETE');
+  assert.equal(calls[1][1].headers.get('X-CSRF-Token'), 'csrf-test-fixture');
+  assert.equal(calls[2][0], '/api/me/sessions/revoke-others');
 });

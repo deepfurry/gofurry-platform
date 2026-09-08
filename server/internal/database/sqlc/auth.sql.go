@@ -11,6 +11,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const changePasswordHash = `-- name: ChangePasswordHash :execrows
+UPDATE app.password_credentials SET password_hash = $1,
+    password_updated_at = $2, updated_at = $2
+WHERE user_id = $3 AND password_hash = $4
+`
+
+type ChangePasswordHashParams struct {
+	NewHash string
+	Now     pgtype.Timestamptz
+	UserID  pgtype.UUID
+	OldHash string
+}
+
+func (q *Queries) ChangePasswordHash(ctx context.Context, arg ChangePasswordHashParams) (int64, error) {
+	result, err := q.db.Exec(ctx, changePasswordHash,
+		arg.NewHash,
+		arg.Now,
+		arg.UserID,
+		arg.OldHash,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const compareAndSwapPasswordHash = `-- name: CompareAndSwapPasswordHash :execrows
 UPDATE app.password_credentials SET password_hash = $1, updated_at = $2
 WHERE user_id = $3 AND password_hash = $4
@@ -34,6 +60,52 @@ func (q *Queries) CompareAndSwapPasswordHash(ctx context.Context, arg CompareAnd
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const consumeChallenge = `-- name: ConsumeChallenge :execrows
+UPDATE app.auth_challenges SET consumed_at = $1
+WHERE id = $2 AND consumed_at IS NULL AND invalidated_at IS NULL AND expires_at > $1
+`
+
+type ConsumeChallengeParams struct {
+	Now pgtype.Timestamptz
+	ID  pgtype.UUID
+}
+
+func (q *Queries) ConsumeChallenge(ctx context.Context, arg ConsumeChallengeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeChallenge, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const createAuthChallenge = `-- name: CreateAuthChallenge :exec
+INSERT INTO app.auth_challenges (id, user_id, auth_identity_id, purpose, token_hash, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type CreateAuthChallengeParams struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	AuthIdentityID pgtype.UUID
+	Purpose        string
+	TokenHash      string
+	CreatedAt      pgtype.Timestamptz
+	ExpiresAt      pgtype.Timestamptz
+}
+
+func (q *Queries) CreateAuthChallenge(ctx context.Context, arg CreateAuthChallengeParams) error {
+	_, err := q.db.Exec(ctx, createAuthChallenge,
+		arg.ID,
+		arg.UserID,
+		arg.AuthIdentityID,
+		arg.Purpose,
+		arg.TokenHash,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
 }
 
 const createEmailIdentity = `-- name: CreateEmailIdentity :exec
@@ -74,6 +146,75 @@ func (q *Queries) CreatePasswordCredential(ctx context.Context, arg CreatePasswo
 	return err
 }
 
+const findActiveChallengeByTokenHash = `-- name: FindActiveChallengeByTokenHash :one
+SELECT ch.id, ch.user_id, ch.auth_identity_id, ch.token_hash
+FROM app.auth_challenges ch JOIN app.auth_identities a ON a.id = ch.auth_identity_id AND a.user_id = ch.user_id
+JOIN app.users u ON u.id = ch.user_id
+WHERE ch.token_hash = $1 AND ch.purpose = $2
+  AND ch.consumed_at IS NULL AND ch.invalidated_at IS NULL AND ch.expires_at > $3
+  AND a.provider = 'email' AND u.account_state = 'active' AND u.deleted_at IS NULL
+`
+
+type FindActiveChallengeByTokenHashParams struct {
+	TokenHash string
+	Purpose   string
+	Now       pgtype.Timestamptz
+}
+
+type FindActiveChallengeByTokenHashRow struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	AuthIdentityID pgtype.UUID
+	TokenHash      string
+}
+
+func (q *Queries) FindActiveChallengeByTokenHash(ctx context.Context, arg FindActiveChallengeByTokenHashParams) (FindActiveChallengeByTokenHashRow, error) {
+	row := q.db.QueryRow(ctx, findActiveChallengeByTokenHash, arg.TokenHash, arg.Purpose, arg.Now)
+	var i FindActiveChallengeByTokenHashRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.AuthIdentityID,
+		&i.TokenHash,
+	)
+	return i, err
+}
+
+const findActiveChallengeByTokenHashForUpdate = `-- name: FindActiveChallengeByTokenHashForUpdate :one
+SELECT ch.id, ch.user_id, ch.auth_identity_id, ch.token_hash
+FROM app.auth_challenges ch JOIN app.auth_identities a ON a.id = ch.auth_identity_id AND a.user_id = ch.user_id
+JOIN app.users u ON u.id = ch.user_id
+WHERE ch.token_hash = $1 AND ch.purpose = $2
+  AND ch.consumed_at IS NULL AND ch.invalidated_at IS NULL AND ch.expires_at > $3
+  AND a.provider = 'email' AND u.account_state = 'active' AND u.deleted_at IS NULL
+FOR UPDATE OF ch
+`
+
+type FindActiveChallengeByTokenHashForUpdateParams struct {
+	TokenHash string
+	Purpose   string
+	Now       pgtype.Timestamptz
+}
+
+type FindActiveChallengeByTokenHashForUpdateRow struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	AuthIdentityID pgtype.UUID
+	TokenHash      string
+}
+
+func (q *Queries) FindActiveChallengeByTokenHashForUpdate(ctx context.Context, arg FindActiveChallengeByTokenHashForUpdateParams) (FindActiveChallengeByTokenHashForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, findActiveChallengeByTokenHashForUpdate, arg.TokenHash, arg.Purpose, arg.Now)
+	var i FindActiveChallengeByTokenHashForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.AuthIdentityID,
+		&i.TokenHash,
+	)
+	return i, err
+}
+
 const findLocalCredentialByEmailSubject = `-- name: FindLocalCredentialByEmailSubject :one
 SELECT u.id, u.account_state, u.deleted_at, c.password_hash
 FROM app.auth_identities a JOIN app.users u ON u.id = a.user_id
@@ -98,4 +239,164 @@ func (q *Queries) FindLocalCredentialByEmailSubject(ctx context.Context, provide
 		&i.PasswordHash,
 	)
 	return i, err
+}
+
+const getLatestChallenge = `-- name: GetLatestChallenge :one
+SELECT id, created_at FROM app.auth_challenges
+WHERE auth_identity_id = $1 AND purpose = $2
+ORDER BY created_at DESC LIMIT 1
+`
+
+type GetLatestChallengeParams struct {
+	AuthIdentityID pgtype.UUID
+	Purpose        string
+}
+
+type GetLatestChallengeRow struct {
+	ID        pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetLatestChallenge(ctx context.Context, arg GetLatestChallengeParams) (GetLatestChallengeRow, error) {
+	row := q.db.QueryRow(ctx, getLatestChallenge, arg.AuthIdentityID, arg.Purpose)
+	var i GetLatestChallengeRow
+	err := row.Scan(&i.ID, &i.CreatedAt)
+	return i, err
+}
+
+const getLocalEmailIdentityForUser = `-- name: GetLocalEmailIdentityForUser :one
+SELECT a.id, a.user_id, a.email, a.verified_at
+FROM app.auth_identities a JOIN app.users u ON u.id = a.user_id
+WHERE a.user_id = $1 AND a.provider = 'email' AND a.email IS NOT NULL
+  AND u.account_state = 'active' AND u.deleted_at IS NULL
+`
+
+type GetLocalEmailIdentityForUserRow struct {
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	Email      pgtype.Text
+	VerifiedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetLocalEmailIdentityForUser(ctx context.Context, userID pgtype.UUID) (GetLocalEmailIdentityForUserRow, error) {
+	row := q.db.QueryRow(ctx, getLocalEmailIdentityForUser, userID)
+	var i GetLocalEmailIdentityForUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Email,
+		&i.VerifiedAt,
+	)
+	return i, err
+}
+
+const getPasswordCredentialByUser = `-- name: GetPasswordCredentialByUser :one
+SELECT c.user_id, c.password_hash FROM app.password_credentials c
+JOIN app.users u ON u.id = c.user_id
+WHERE c.user_id = $1 AND u.account_state = 'active' AND u.deleted_at IS NULL
+`
+
+type GetPasswordCredentialByUserRow struct {
+	UserID       pgtype.UUID
+	PasswordHash string
+}
+
+func (q *Queries) GetPasswordCredentialByUser(ctx context.Context, userID pgtype.UUID) (GetPasswordCredentialByUserRow, error) {
+	row := q.db.QueryRow(ctx, getPasswordCredentialByUser, userID)
+	var i GetPasswordCredentialByUserRow
+	err := row.Scan(&i.UserID, &i.PasswordHash)
+	return i, err
+}
+
+const insertSecurityEvent = `-- name: InsertSecurityEvent :exec
+INSERT INTO app.security_events (user_id, session_id, event_type, occurred_at) VALUES ($1, $2, $3, $4)
+`
+
+type InsertSecurityEventParams struct {
+	UserID     pgtype.UUID
+	SessionID  pgtype.UUID
+	EventType  string
+	OccurredAt pgtype.Timestamptz
+}
+
+func (q *Queries) InsertSecurityEvent(ctx context.Context, arg InsertSecurityEventParams) error {
+	_, err := q.db.Exec(ctx, insertSecurityEvent,
+		arg.UserID,
+		arg.SessionID,
+		arg.EventType,
+		arg.OccurredAt,
+	)
+	return err
+}
+
+const invalidateActiveChallenges = `-- name: InvalidateActiveChallenges :exec
+UPDATE app.auth_challenges SET invalidated_at = $1
+WHERE user_id = $2 AND purpose = $3
+  AND consumed_at IS NULL AND invalidated_at IS NULL
+`
+
+type InvalidateActiveChallengesParams struct {
+	Now     pgtype.Timestamptz
+	UserID  pgtype.UUID
+	Purpose string
+}
+
+func (q *Queries) InvalidateActiveChallenges(ctx context.Context, arg InvalidateActiveChallengesParams) error {
+	_, err := q.db.Exec(ctx, invalidateActiveChallenges, arg.Now, arg.UserID, arg.Purpose)
+	return err
+}
+
+const lockPasswordCredential = `-- name: LockPasswordCredential :one
+SELECT c.user_id, c.password_hash FROM app.password_credentials c
+JOIN app.users u ON u.id = c.user_id
+WHERE c.user_id = $1 AND u.account_state = 'active' AND u.deleted_at IS NULL
+FOR UPDATE OF c
+`
+
+type LockPasswordCredentialRow struct {
+	UserID       pgtype.UUID
+	PasswordHash string
+}
+
+func (q *Queries) LockPasswordCredential(ctx context.Context, userID pgtype.UUID) (LockPasswordCredentialRow, error) {
+	row := q.db.QueryRow(ctx, lockPasswordCredential, userID)
+	var i LockPasswordCredentialRow
+	err := row.Scan(&i.UserID, &i.PasswordHash)
+	return i, err
+}
+
+const markEmailIdentityVerified = `-- name: MarkEmailIdentityVerified :execrows
+UPDATE app.auth_identities SET verified_at = $1, updated_at = $1
+WHERE id = $2 AND user_id = $3 AND provider = 'email' AND verified_at IS NULL
+`
+
+type MarkEmailIdentityVerifiedParams struct {
+	Now    pgtype.Timestamptz
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
+func (q *Queries) MarkEmailIdentityVerified(ctx context.Context, arg MarkEmailIdentityVerifiedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markEmailIdentityVerified, arg.Now, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setPasswordHashForReset = `-- name: SetPasswordHashForReset :exec
+UPDATE app.password_credentials SET password_hash = $1,
+    password_updated_at = $2, updated_at = $2
+WHERE user_id = $3
+`
+
+type SetPasswordHashForResetParams struct {
+	NewHash string
+	Now     pgtype.Timestamptz
+	UserID  pgtype.UUID
+}
+
+func (q *Queries) SetPasswordHashForReset(ctx context.Context, arg SetPasswordHashForResetParams) error {
+	_, err := q.db.Exec(ctx, setPasswordHashForReset, arg.NewHash, arg.Now, arg.UserID)
+	return err
 }

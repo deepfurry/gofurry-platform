@@ -1,7 +1,8 @@
 # GoFurry Platform
 
 A multi-process modular monolith for furry resource discovery and exchange. P0-0
-established infrastructure; P0-1A adds identity and local public authentication.
+established infrastructure; P0-1A/B add identity, local authentication, session
+security and account recovery.
 
 ## Start here
 
@@ -38,6 +39,8 @@ are pattern references only and never override this repository.
   Startup never migrates. Never rewrite released/applied migration history.
 - PostgreSQL is canonical; Redis is ephemeral with `gfp:` keys. River imports stay
   under `server/internal/jobs`. Do not create speculative domain packages.
+- Auth owns transactions and the challenge-mail interface. Raw challenge tokens
+  never enter jobs; the mail adapter delivers after commit to private local capture.
 - Never print, commit, replace or remove `server/env/*.local` or `.local/` secrets.
   Never include real DSNs, credentials or Tailnet addresses in tracked output.
 - Do not SSH/administer shared Infra or change cluster roles/Redis ACLs. Prepared

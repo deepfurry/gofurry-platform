@@ -77,19 +77,12 @@ func (a *App) Resolve(ctx context.Context, token string) (Actor, error) {
 }
 
 func (a *App) Logout(ctx context.Context, actor Actor) error {
-	if actor.SessionKind != "public" {
-		return ErrUnauthenticated
-	}
-	err := sqlc.New(a.pool).RevokeSession(ctx, sqlc.RevokeSessionParams{ID: dbID(actor.SessionID), UserID: dbID(actor.UserID), Now: timestamp(a.now().UTC())})
-	if err != nil {
-		return database.SafeError("revoke session", err)
-	}
-	return nil
+	return a.revoke(ctx, actor, actor.SessionID, loggedOut)
 }
 
-func createSession(ctx context.Context, q *sqlc.Queries, userID, sessionID uuid.UUID, token, verifiedHash string, now time.Time) error {
+func createSession(ctx context.Context, q *sqlc.Queries, userID, sessionID uuid.UUID, token, verifiedHash, authMethod string, now time.Time) error {
 	hash, _ := tokenHash(token)
-	n, err := q.CreateSession(ctx, sqlc.CreateSessionParams{ID: dbID(sessionID), UserID: dbID(userID), TokenHash: hash[:], Now: timestamp(now),
+	n, err := q.CreateSession(ctx, sqlc.CreateSessionParams{ID: dbID(sessionID), UserID: dbID(userID), TokenHash: hash[:], Now: timestamp(now), AuthMethod: authMethod,
 		IdleExpiresAt: timestamp(now.Add(IdleLifetime)), AbsoluteExpiresAt: timestamp(now.Add(AbsoluteLifetime)), VerifiedHash: verifiedHash})
 	if err != nil {
 		return database.SafeError("create session", err)

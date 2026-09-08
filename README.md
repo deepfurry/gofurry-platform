@@ -1,9 +1,9 @@
 # GoFurry Platform
 
 A discovery and exchange platform for the furry ecosystem, centered on resource
-knowledge. P0-0 established the engineering foundation; P0-1A adds local accounts,
-public sessions and basic profiles. Production authentication still requires the
-remaining P0-1 security and recovery phases.
+knowledge. P0-0 established the engineering foundation; P0-1A/B add local accounts,
+public profiles, session security, email verification and password recovery.
+Production authentication still requires the remaining P0-1 phases and mail delivery.
 
 ## Development
 
@@ -37,7 +37,7 @@ separate terminals, `pnpm dev:api`, `pnpm dev:admin-api`, `pnpm dev:worker`,
 `dev` is the current integration branch; `main` is a stable release snapshot.
 Publishing, merging to `main`, tagging and releasing require explicit instruction.
 
-Start with [AGENTS.md](AGENTS.md), the [P0-1A specification](docs/implementation/p0-1a-identity-local-auth.md),
+Start with [AGENTS.md](AGENTS.md), the [P0-1B specification](docs/implementation/p0-1b-session-security-verification-recovery.md),
 [product overview](docs/product/PRODUCT.md) and [architecture](docs/architecture/ARCHITECTURE.md).
 See [CHANGELOG.md](CHANGELOG.md) and [deployment artifacts](deploy/README.md).
 

@@ -70,7 +70,7 @@ the generated facade. Both APIs expose GET `/health/live` and `/health/ready`.
 Live does not fan out; readiness requires PostgreSQL and reports Redis degradation.
 Anonymous public SSR never reads per-user state; `/foundation` is prerendered.
 
-## Local authentication (P0-1A)
+## Local authentication (P0-1A/B)
 
 Public Web provides `/register`, `/login` and `/account` as anonymous Astro shells
 with React islands. Account data is fetched in the browser through `/api/me`; it
@@ -108,9 +108,49 @@ logout revokes the current session and expires the same cookie. No browser stora
 contains credentials or session tokens. Auth/profile database work has a bounded
 request context; private responses use `Cache-Control: no-store`.
 
-This is not production-auth complete. P0-1B supplies verification/recovery and full
-synchronizer CSRF; P0-1C/P0-1D cover the remaining planned provider/security work.
-Rate limits, Turnstile, security events, Admin auth and roles are not implemented.
+P0-1B adds `/forgot-password`, `/reset-password` and `/verify-email`, plus account
+verification resend, password change and session management. Link pages read
+`#token=` into React memory and immediately remove it with `history.replaceState`.
+Reloading loses that value. No token enters browser storage, SSR state or query
+strings. Account shells send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
+
+Authenticated unsafe requests require both exact Origin and `X-CSRF-Token`. Obtain
+the latter from GET `/auth/csrf`; it is base64url HMAC-SHA256 of the raw session token
+using `CSRF_SECRET`, not an authentication credential. Browser helpers fetch a fresh
+value before each mutation, so no cache survives a cookie rotation. Anonymous unsafe
+requests need Origin only. Session authentication remains the PostgreSQL lookup.
+
+| API-only setting | Development/test | Production |
+| --- | --- | --- |
+| `CSRF_SECRET` | Explicit public development default if omitted | Private value of at least 32 bytes required; development default rejected |
+| `MAIL_MODE` | `local` by default; `disabled` supports failure testing | Defaults to `disabled`; `local` rejected |
+| `MAIL_LOCAL_DIR` | Defaults to `../.local/mail` when launched from `server` | Unused with disabled delivery |
+
+Existing ignored credentials need no edits. Local captures must stay below the
+repository `.local` directory; `os.Root` confines nested paths/symlinks. New capture
+directories/files use 0700/0600 where supported; existing broad directory permissions
+are rejected on Unix. Windows uses the account's filesystem ACLs. Captures contain
+private JSON messages (`To`, `Subject`, `Link`) with random UUID filenames. Inspect
+them privately on your workstation, never paste their contents into logs/reports or
+expose them through an HTTP route. Links target `PUBLIC_ORIGIN` and use a fragment.
+
+Auth issues a challenge and commits before calling its consumer-owned mail interface.
+Only an easyhash hash is persisted. Verification expires in 24 hours, reset in 30
+minutes; issuing the same identity/purpose is limited to once per 60 seconds,
+including after consumption. Replacement invalidates the previous challenge.
+Registration still succeeds and returns its session cookie if delivery fails.
+Reset requests always return the same accepted response for eligible/ineligible
+accounts and delivery failure; an authenticated resend may return `MAIL_UNAVAILABLE`.
+Delivery failures use static safe logs, without sender errors or private values.
+
+Password reset/change atomically revoke all public sessions and issue one replacement;
+reset does not auto-verify email. Reauthentication replaces only the current session
+and refreshes `authenticated_at`. Session management exposes only the user's active
+public sessions. Security events persist only IDs, event type and time, in the same
+transaction as the corresponding write. No production mail provider, SMTP SDK or
+durable raw-token queue is implemented. `MAIL_MODE=disabled` does not make recovery
+production-ready. Remaining scope is P0-1C OAuth/linking and P0-1D Admin/roles/final
+hardening (including abuse controls); this implementation is not production-auth complete.
 
 ## Migrations and shared Infra
 
@@ -127,6 +167,9 @@ forward migrations. Once applied to shared Infra, do not edit it in place.
 Migration 2 adds the five identity/auth tables with restrictive FKs, CHECK/UNIQUE
 constraints and explicit API DML. Admin/Worker get no identity DML. Always pass
 disposable migration and auth tests before applying new migrations to shared dev.
+Migration 3 adds challenges and security events with minimal API grants and readonly
+SELECT. Security event identity insertion requires no direct sequence grant. Migration
+history 1–3 is immutable once applied to shared development.
 
 River 0.47.0 refuses to start with zero registered workers (`client.go`, `Start`).
 The only P0-0 job is `infrastructure.probe.v1`: an explicit smoke request that runs
@@ -143,11 +186,13 @@ Worker River enqueue/execution/completion/cleanup. Driver errors retain only saf
 operation labels and PostgreSQL SQLSTATE. Missing privileges are a stop condition.
 
 After disposable acceptance, `pnpm smoke:auth:dev` checks `gfp_api`/`gfp_dev`, then
-registers, logs in, reads/updates a profile and logs out through the actual Fiber
+registers, verifies email through private capture, resets/changes passwords, rotates
+authentication, lists/revokes sessions, checks CSRF, reads/updates a profile and logs out through the actual Fiber
 handlers/application code with real pgx connections. It does not require an already
 running API listener. No email/password/cookie/hash/URL is printed. The prepared
 `gfp_migrator` connection deletes only that process's randomly named temporary
-identity and dependent records in a restrictive-FK-safe transaction; no runtime
+identity, challenges, events and dependent records in a restrictive-FK-safe transaction;
+the run also removes only its own randomly named capture subdirectory. No runtime
 DELETE grant, shared server administration or production user deletion is involved.
 
 ## Disposable CI and containers
@@ -161,7 +206,7 @@ use fresh containers for each acceptance run. Only this explicitly guarded fixtu
 setup creates cluster roles, on the disposable server.
 
 CI reuses `pnpm check`, repeats generation with Git drift/untracked-file checks,
-runs fresh migrations twice, driver smoke and P0-1A auth/database/HTTP/privacy tests,
+runs fresh migrations twice, driver smoke and P0-1A/B auth/database/HTTP/privacy tests,
 then builds all four images. Third
 party Actions are pinned to commit SHAs. No deployment, tag, release or image push.
 
@@ -174,3 +219,4 @@ set `CI=true`, `GFP_DISPOSABLE_INFRA=1`, `GFP_AUTH_INTEGRATION=1` and run
 `go -C server test -count=1 -run TestIntegration ./internal/transport/public`.
 Tests hard-code the disposable loopback database and never read developer URLs.
 The ordinary Go test suite skips these integration tests until explicitly enabled.
+CI mail tests use fake delivery or `t.TempDir`, never network email or developer captures.

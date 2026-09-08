@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Add P0-1B migration 3 for single-use auth challenges and transactional security
+  events, with minimal API privileges and no new dependency or product domain.
+- Require session-bound HMAC CSRF and exact Origin for authenticated unsafe Public
+  requests; keep raw session tokens HttpOnly and discard CSRF on rotation.
+- Add email verification, password reset/change, reauthentication and owned public
+  session listing/revocation, with atomic password/challenge/session/event updates.
+- Add consumer-owned post-commit mail delivery and private local capture; production
+  rejects local capture and no production mail provider is included.
+- Add recovery/verification pages and account security controls using generated
+  clients, memory-only fragment handling and no-referrer responses.
+- Extend disposable security, privacy, concurrency and rollback tests, and the real
+  development auth smoke with private capture and narrowly scoped fixture cleanup.
+
 - Add P0-1A accounts, public profiles, email identities, password credentials and
   PostgreSQL public sessions through migration 2, with explicit runtime grants.
 - Add standard-library UUIDv7 IDs, easyhash v1.2.0 explicit Argon2id hashing,
@@ -13,7 +26,7 @@
 - Add disposable database/concurrency/HTTP/privacy tests and a real-development
   authentication smoke with narrowly scoped temporary-identity cleanup.
 - Extend Agent contracts and secret/boundary audits for the implemented identity
-  scope. Email verification, recovery, OAuth and auth hardening remain later phases.
+  scope. OAuth and final auth hardening remain later phases.
 
 - Establish P0-0 Agent context, engineering contracts and implementation guidance.
 - Add pnpm workspace with Astro/React public SSR, React/Vite admin SPA, shared SCSS

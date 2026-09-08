@@ -19,6 +19,7 @@ import (
 	"uuid"
 
 	"github.com/deepfurry/gofurry-platform/server/internal/auth"
+	"github.com/deepfurry/gofurry-platform/server/internal/config"
 	"github.com/deepfurry/gofurry-platform/server/internal/database"
 	"github.com/deepfurry/gofurry-platform/server/internal/database/sqlc"
 	"github.com/deepfurry/gofurry-platform/server/internal/identity"
@@ -40,6 +41,7 @@ type fixture struct {
 	api, owner *pgxpool.Pool
 	auth       *auth.App
 	identity   *identity.App
+	mail       *fakeMailer
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -64,15 +66,16 @@ func newFixture(t *testing.T) *fixture {
 	if err = database.Ready(t.Context(), api); err != nil {
 		t.Fatal("disposable database is not ready")
 	}
-	authentication, err := auth.New(api)
+	mailer := &fakeMailer{}
+	authentication, err := auth.New(api, mailer)
 	if err != nil {
 		t.Fatal("authentication initialization failed")
 	}
 	identities := identity.New(api)
 	checker := health.New(func(ctx context.Context) error { return database.Ready(ctx, api) }, func(context.Context) error { return nil })
 	app := fiber.New()
-	Register(app, checker, authentication, identities, Options{Environment: "test", PublicOrigin: testOrigin})
-	return &fixture{t: t, app: app, api: api, owner: owner, auth: authentication, identity: identities}
+	Register(app, checker, authentication, identities, Options{Environment: "test", PublicOrigin: testOrigin, CSRFSecret: config.DevelopmentCSRFSecret})
+	return &fixture{t: t, app: app, api: api, owner: owner, auth: authentication, identity: identities, mail: mailer}
 }
 
 func (f *fixture) request(method, path string, body any, cookie *http.Cookie, status int) (map[string]any, *http.Cookie) {
@@ -86,6 +89,7 @@ func (f *fixture) request(method, path string, body any, cookie *http.Cookie, st
 	req.Header.Set("Content-Type", "application/json")
 	if cookie != nil {
 		req.AddCookie(cookie)
+		req.Header.Set("X-CSRF-Token", csrfToken(config.DevelopmentCSRFSecret, cookie.Value))
 	}
 	response, err := f.app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second})
 	if err != nil {
@@ -416,11 +420,11 @@ func TestIntegrationSchemaAndPrivileges(t *testing.T) {
 	f := newFixture(t)
 	ctx := t.Context()
 	var tables string
-	if err := f.owner.QueryRow(ctx, `SELECT string_agg(tablename,',' ORDER BY tablename) FROM pg_tables WHERE schemaname='app'`).Scan(&tables); err != nil || tables != "auth_identities,goose_db_version,password_credentials,sessions,user_profiles,users" {
+	if err := f.owner.QueryRow(ctx, `SELECT string_agg(tablename,',' ORDER BY tablename) FROM pg_tables WHERE schemaname='app'`).Scan(&tables); err != nil || tables != "auth_challenges,auth_identities,goose_db_version,password_credentials,security_events,sessions,user_profiles,users" {
 		t.Fatal("unexpected application schema or future tables")
 	}
 	var version int
-	if err := f.owner.QueryRow(ctx, "SELECT max(version_id) FROM app.goose_db_version WHERE is_applied").Scan(&version); err != nil || version != 2 {
+	if err := f.owner.QueryRow(ctx, "SELECT max(version_id) FROM app.goose_db_version WHERE is_applied").Scan(&version); err != nil || version != 3 {
 		t.Fatal("fresh migration chain failed")
 	}
 	for _, role := range []string{"gfp_api", "gfp_admin", "gfp_worker"} {
@@ -430,7 +434,7 @@ func TestIntegrationSchemaAndPrivileges(t *testing.T) {
 		}
 	}
 	for _, role := range []string{"gfp_admin", "gfp_worker"} {
-		for _, table := range []string{"users", "user_profiles", "auth_identities", "password_credentials", "sessions"} {
+		for _, table := range []string{"users", "user_profiles", "auth_identities", "password_credentials", "sessions", "auth_challenges", "security_events"} {
 			var anyPrivilege bool
 			if err := f.owner.QueryRow(ctx, "SELECT has_any_column_privilege($1,$2,'SELECT,INSERT,UPDATE,REFERENCES') OR has_table_privilege($1,$2,'DELETE,TRUNCATE,TRIGGER')", role, "app."+table).Scan(&anyPrivilege); err != nil || anyPrivilege {
 				t.Fatal("unneeded identity privileges granted")

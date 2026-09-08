@@ -1,0 +1,8 @@
+---
+import AccountLayout from '../layouts/AccountLayout.astro';
+import Recovery from '../components/Recovery';
+---
+<AccountLayout title="Verify email" description="Confirm this email address belongs to you.">
+  <Recovery mode="verify" client:load />
+  <noscript>Enable JavaScript to use your private verification link.</noscript>
+</AccountLayout>
