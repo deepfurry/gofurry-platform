@@ -1,0 +1,5 @@
+# Local application secrets
+/server/env/*.local
+
+# Local operator-only files
+/.local/
