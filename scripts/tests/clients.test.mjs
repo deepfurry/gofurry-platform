@@ -3,6 +3,29 @@ import { test } from 'node:test';
 import * as publicClient from '../../packages/api-client/src/generated/public/client.ts';
 import * as adminClient from '../../packages/api-client/src/generated/admin/client.ts';
 
+test('public: OAuth owner clients preserve Origin-bound CSRF options and safe errors', async t => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push([url, options]);
+    return new Response(JSON.stringify({ code: 'AUTH_REAUTH_REQUIRED', message: 'Reauthenticate to continue.' }), { status: 403 });
+  });
+  const options = { credentials: 'same-origin', headers: { 'X-CSRF-Token': 'csrf-test-fixture' } };
+  await publicClient.linkOAuthProvider('google', options);
+  await publicClient.reauthenticateOAuthProvider('github', options);
+  const result = await publicClient.unlinkOAuthProvider('google', options);
+  assert.equal(result.status, 403);
+  assert.equal(result.data.code, 'AUTH_REAUTH_REQUIRED');
+  assert.deepEqual(calls.map(([url, request]) => [url, request.method]), [
+    ['/api/me/auth-methods/google/link', 'POST'],
+    ['/api/me/auth-methods/github/reauthenticate', 'POST'],
+    ['/api/me/auth-methods/google', 'DELETE'],
+  ]);
+  for (const [, request] of calls) {
+    assert.equal(request.credentials, 'same-origin');
+    assert.equal(new globalThis.Headers(request.headers).get('X-CSRF-Token'), 'csrf-test-fixture');
+  }
+});
+
 for (const [name, client] of Object.entries({ public: publicClient, admin: adminClient })) {
   test(`${name}: generated fetch preserves degraded/503 responses and AbortSignal`, async t => {
     const controller = new AbortController();

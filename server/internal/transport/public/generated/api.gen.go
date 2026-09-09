@@ -6,6 +6,7 @@ package generated
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -15,10 +16,17 @@ import (
 // Defines values for ApiErrorCode.
 const (
 	AUTHACCOUNTDISABLED        ApiErrorCode = "AUTH_ACCOUNT_DISABLED"
+	AUTHACCOUNTLINKREQUIRED    ApiErrorCode = "AUTH_ACCOUNT_LINK_REQUIRED"
 	AUTHCHALLENGEINVALID       ApiErrorCode = "AUTH_CHALLENGE_INVALID"
 	AUTHEMAILALREADYREGISTERED ApiErrorCode = "AUTH_EMAIL_ALREADY_REGISTERED"
 	AUTHINVALIDCREDENTIALS     ApiErrorCode = "AUTH_INVALID_CREDENTIALS"
+	AUTHLASTMETHOD             ApiErrorCode = "AUTH_LAST_METHOD"
+	AUTHPROVIDERALREADYLINKED  ApiErrorCode = "AUTH_PROVIDER_ALREADY_LINKED"
+	AUTHPROVIDERINVALID        ApiErrorCode = "AUTH_PROVIDER_INVALID"
+	AUTHPROVIDERNOTLINKED      ApiErrorCode = "AUTH_PROVIDER_NOT_LINKED"
+	AUTHPROVIDERUNAVAILABLE    ApiErrorCode = "AUTH_PROVIDER_UNAVAILABLE"
 	AUTHREAUTHFAILED           ApiErrorCode = "AUTH_REAUTH_FAILED"
+	AUTHREAUTHREQUIRED         ApiErrorCode = "AUTH_REAUTH_REQUIRED"
 	AUTHSESSIONNOTFOUND        ApiErrorCode = "AUTH_SESSION_NOT_FOUND"
 	AUTHUNAUTHENTICATED        ApiErrorCode = "AUTH_UNAUTHENTICATED"
 	CSRFINVALID                ApiErrorCode = "CSRF_INVALID"
@@ -35,13 +43,27 @@ func (e ApiErrorCode) Valid() bool {
 	switch e {
 	case AUTHACCOUNTDISABLED:
 		return true
+	case AUTHACCOUNTLINKREQUIRED:
+		return true
 	case AUTHCHALLENGEINVALID:
 		return true
 	case AUTHEMAILALREADYREGISTERED:
 		return true
 	case AUTHINVALIDCREDENTIALS:
 		return true
+	case AUTHLASTMETHOD:
+		return true
+	case AUTHPROVIDERALREADYLINKED:
+		return true
+	case AUTHPROVIDERINVALID:
+		return true
+	case AUTHPROVIDERNOTLINKED:
+		return true
+	case AUTHPROVIDERUNAVAILABLE:
+		return true
 	case AUTHREAUTHFAILED:
+		return true
+	case AUTHREAUTHREQUIRED:
 		return true
 	case AUTHSESSIONNOTFOUND:
 		return true
@@ -90,6 +112,24 @@ const (
 func (e MeAccountState) Valid() bool {
 	switch e {
 	case Active:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OAuthProvider.
+const (
+	OAuthProviderGithub OAuthProvider = "github"
+	OAuthProviderGoogle OAuthProvider = "google"
+)
+
+// Valid indicates whether the value is a known member of the OAuthProvider enum.
+func (e OAuthProvider) Valid() bool {
+	switch e {
+	case OAuthProviderGithub:
+		return true
+	case OAuthProviderGoogle:
 		return true
 	default:
 		return false
@@ -153,6 +193,30 @@ func (e ReadyStatus) Valid() bool {
 	}
 }
 
+// Defines values for SessionAuthMethod.
+const (
+	SessionAuthMethodGithub        SessionAuthMethod = "github"
+	SessionAuthMethodGoogle        SessionAuthMethod = "google"
+	SessionAuthMethodPassword      SessionAuthMethod = "password"
+	SessionAuthMethodPasswordReset SessionAuthMethod = "password_reset"
+)
+
+// Valid indicates whether the value is a known member of the SessionAuthMethod enum.
+func (e SessionAuthMethod) Valid() bool {
+	switch e {
+	case SessionAuthMethodGithub:
+		return true
+	case SessionAuthMethodGoogle:
+		return true
+	case SessionAuthMethodPassword:
+		return true
+	case SessionAuthMethodPasswordReset:
+		return true
+	default:
+		return false
+	}
+}
+
 // Accepted defines model for Accepted.
 type Accepted struct {
 	Message string `json:"message"`
@@ -166,6 +230,12 @@ type ApiError struct {
 
 // ApiErrorCode defines model for ApiError.Code.
 type ApiErrorCode string
+
+// AuthMethods defines model for AuthMethods.
+type AuthMethods struct {
+	Password  bool             `json:"password"`
+	Providers []ProviderMethod `json:"providers"`
+}
 
 // ChallengeToken defines model for ChallengeToken.
 type ChallengeToken struct {
@@ -210,6 +280,14 @@ type Me struct {
 // MeAccountState defines model for Me.AccountState.
 type MeAccountState string
 
+// OAuthAuthorization defines model for OAuthAuthorization.
+type OAuthAuthorization struct {
+	AuthorizationUrl string `json:"authorization_url"`
+}
+
+// OAuthProvider defines model for OAuthProvider.
+type OAuthProvider string
+
 // PasswordChange defines model for PasswordChange.
 type PasswordChange struct {
 	CurrentPassword *string `json:"current_password,omitempty"`
@@ -236,6 +314,13 @@ type ProfileUpdate struct {
 	DisplayName          *string `json:"display_name,omitempty"`
 	Handle               *Handle `json:"handle,omitempty"`
 	SearchEngineIndexing *bool   `json:"search_engine_indexing,omitempty"`
+}
+
+// ProviderMethod defines model for ProviderMethod.
+type ProviderMethod struct {
+	Email    *string       `json:"email"`
+	LinkedAt time.Time     `json:"linked_at"`
+	Provider OAuthProvider `json:"provider"`
 }
 
 // PublicProfile defines model for PublicProfile.
@@ -273,15 +358,18 @@ type ResetRequest struct {
 
 // Session defines model for Session.
 type Session struct {
-	AbsoluteExpiresAt time.Time `json:"absolute_expires_at"`
-	AuthMethod        string    `json:"auth_method"`
-	AuthenticatedAt   time.Time `json:"authenticated_at"`
-	CreatedAt         time.Time `json:"created_at"`
-	Current           bool      `json:"current"`
-	Id                string    `json:"id"`
-	IdleExpiresAt     time.Time `json:"idle_expires_at"`
-	LastSeenAt        time.Time `json:"last_seen_at"`
+	AbsoluteExpiresAt time.Time         `json:"absolute_expires_at"`
+	AuthMethod        SessionAuthMethod `json:"auth_method"`
+	AuthenticatedAt   time.Time         `json:"authenticated_at"`
+	CreatedAt         time.Time         `json:"created_at"`
+	Current           bool              `json:"current"`
+	Id                string            `json:"id"`
+	IdleExpiresAt     time.Time         `json:"idle_expires_at"`
+	LastSeenAt        time.Time         `json:"last_seen_at"`
 }
+
+// SessionAuthMethod defines model for Session.AuthMethod.
+type SessionAuthMethod string
 
 // SessionList defines model for SessionList.
 type SessionList struct {
@@ -290,6 +378,9 @@ type SessionList struct {
 
 // CSRF defines model for CSRF.
 type CSRF = string
+
+// Provider defines model for Provider.
+type Provider = OAuthProvider
 
 // Authenticated defines model for Authenticated.
 type Authenticated = Me
@@ -312,6 +403,13 @@ type LogoutParams struct {
 	XCSRFToken CSRF `json:"X-CSRF-Token"`
 }
 
+// CompleteOAuthParams defines parameters for CompleteOAuth.
+type CompleteOAuthParams struct {
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+	Code  *string `form:"code,omitempty" json:"code,omitempty"`
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+}
+
 // ChangePasswordParams defines parameters for ChangePassword.
 type ChangePasswordParams struct {
 	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
@@ -320,6 +418,24 @@ type ChangePasswordParams struct {
 
 // ReauthenticateParams defines parameters for Reauthenticate.
 type ReauthenticateParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// UnlinkOAuthProviderParams defines parameters for UnlinkOAuthProvider.
+type UnlinkOAuthProviderParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// LinkOAuthProviderParams defines parameters for LinkOAuthProvider.
+type LinkOAuthProviderParams struct {
+	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
+	XCSRFToken CSRF `json:"X-CSRF-Token"`
+}
+
+// ReauthenticateOAuthProviderParams defines parameters for ReauthenticateOAuthProvider.
+type ReauthenticateOAuthProviderParams struct {
 	// XCSRFToken Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
 	XCSRFToken CSRF `json:"X-CSRF-Token"`
 }
@@ -384,6 +500,12 @@ type ServerInterface interface {
 	// (POST /auth/logout)
 	Logout(c fiber.Ctx, params LogoutParams) error
 
+	// (GET /auth/oauth/{provider}/callback)
+	CompleteOAuth(c fiber.Ctx, provider Provider, params CompleteOAuthParams) error
+
+	// (GET /auth/oauth/{provider}/start)
+	StartOAuth(c fiber.Ctx, provider Provider) error
+
 	// (POST /auth/password/change)
 	ChangePassword(c fiber.Ctx, params ChangePasswordParams) error
 
@@ -407,6 +529,18 @@ type ServerInterface interface {
 
 	// (GET /me)
 	GetMe(c fiber.Ctx) error
+
+	// (GET /me/auth-methods)
+	GetAuthMethods(c fiber.Ctx) error
+
+	// (DELETE /me/auth-methods/{provider})
+	UnlinkOAuthProvider(c fiber.Ctx, provider Provider, params UnlinkOAuthProviderParams) error
+
+	// (POST /me/auth-methods/{provider}/link)
+	LinkOAuthProvider(c fiber.Ctx, provider Provider, params LinkOAuthProviderParams) error
+
+	// (POST /me/auth-methods/{provider}/reauthenticate)
+	ReauthenticateOAuthProvider(c fiber.Ctx, provider Provider, params ReauthenticateOAuthProviderParams) error
 
 	// (PATCH /me/profile)
 	UpdateProfile(c fiber.Ctx, params UpdateProfileParams) error
@@ -564,6 +698,94 @@ func (siw *ServerInterfaceWrapper) Logout(c fiber.Ctx) error {
 
 	handler := func(c fiber.Ctx) error {
 		return siw.Handler.Logout(c, params)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// CompleteOAuth operation middleware
+func (siw *ServerInterfaceWrapper) CompleteOAuth(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider Provider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", c.Params("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter provider: %w", err).Error())
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompleteOAuthParams
+
+	var query url.Values
+	query, err = url.ParseQuery(string(c.Request().URI().QueryString()))
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for query string: %w", err).Error())
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", query, &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter state: %w", err).Error())
+	}
+
+	// ------------- Optional query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "code", query, &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter code: %w", err).Error())
+	}
+
+	// ------------- Optional query parameter "error" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error", query, &params.Error, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter error: %w", err).Error())
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.CompleteOAuth(c, provider, params)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// StartOAuth operation middleware
+func (siw *ServerInterfaceWrapper) StartOAuth(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider Provider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", c.Params("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter provider: %w", err).Error())
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.StartOAuth(c, provider)
 	}
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -762,6 +984,183 @@ func (siw *ServerInterfaceWrapper) GetMe(c fiber.Ctx) error {
 
 	handler := func(c fiber.Ctx) error {
 		return siw.Handler.GetMe(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// GetAuthMethods operation middleware
+func (siw *ServerInterfaceWrapper) GetAuthMethods(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.GetAuthMethods(c)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// UnlinkOAuthProvider operation middleware
+func (siw *ServerInterfaceWrapper) UnlinkOAuthProvider(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider Provider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", c.Params("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter provider: %w", err).Error())
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UnlinkOAuthProviderParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.UnlinkOAuthProvider(c, provider, params)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// LinkOAuthProvider operation middleware
+func (siw *ServerInterfaceWrapper) LinkOAuthProvider(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider Provider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", c.Params("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter provider: %w", err).Error())
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LinkOAuthProviderParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.LinkOAuthProvider(c, provider, params)
+	}
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		m := siw.HandlerMiddlewares[i]
+		next := handler
+		handler = func(c fiber.Ctx) error {
+			return m(c, next)
+		}
+	}
+
+	return handler(c)
+}
+
+// ReauthenticateOAuthProvider operation middleware
+func (siw *ServerInterfaceWrapper) ReauthenticateOAuthProvider(c fiber.Ctx) error {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider Provider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", c.Params("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter provider: %w", err).Error())
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReauthenticateOAuthProviderParams
+
+	headers := c.GetReqHeaders()
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRF
+		n := len(valueList)
+		if n != 1 {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Too many values for ParamName X-CSRF-Token, 1 is required, but %d found", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err).Error())
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		return fiber.NewError(fiber.StatusBadRequest, "Header parameter X-CSRF-Token is required, but not found")
+	}
+
+	handler := func(c fiber.Ctx) error {
+		return siw.Handler.ReauthenticateOAuthProvider(c, provider, params)
 	}
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -987,6 +1386,18 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 	for _, m := range options.Middlewares {
 		router.Use(fiber.Handler(m))
 	}
+
+	router.Get(options.BaseURL+"/auth/oauth/:provider/start", wrapper.StartOAuth)
+
+	router.Get(options.BaseURL+"/auth/oauth/:provider/callback", wrapper.CompleteOAuth)
+
+	router.Get(options.BaseURL+"/me/auth-methods", wrapper.GetAuthMethods)
+
+	router.Post(options.BaseURL+"/me/auth-methods/:provider/link", wrapper.LinkOAuthProvider)
+
+	router.Post(options.BaseURL+"/me/auth-methods/:provider/reauthenticate", wrapper.ReauthenticateOAuthProvider)
+
+	router.Delete(options.BaseURL+"/me/auth-methods/:provider", wrapper.UnlinkOAuthProvider)
 
 	router.Post(options.BaseURL+"/auth/register", wrapper.Register)
 

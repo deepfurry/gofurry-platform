@@ -2,12 +2,14 @@ package public
 
 import (
 	"context"
+	"strings"
+	"time"
+
 	"github.com/deepfurry/gofurry-platform/server/internal/auth"
 	"github.com/deepfurry/gofurry-platform/server/internal/identity"
 	"github.com/deepfurry/gofurry-platform/server/internal/transport/health"
 	"github.com/deepfurry/gofurry-platform/server/internal/transport/public/generated"
 	"github.com/gofiber/fiber/v3"
-	"time"
 )
 
 type Handler struct {
@@ -24,7 +26,11 @@ func Register(router fiber.Router, checker *health.Checker, authentication *auth
 	h := &Handler{health: checker, auth: authentication, identity: identities, options: options}
 	for _, path := range []string{"/auth", "/me", "/users"} {
 		router.Use(path, func(c fiber.Ctx) error {
-			ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
+			deadline := 5 * time.Second
+			if strings.HasPrefix(c.Path(), "/auth/oauth/") {
+				deadline = 15 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(c.Context(), deadline)
 			defer cancel()
 			c.SetContext(ctx)
 			return c.Next()
@@ -33,7 +39,8 @@ func Register(router fiber.Router, checker *health.Checker, authentication *auth
 	for _, path := range []string{"/auth", "/me"} {
 		router.Use(path, h.originGuard)
 	}
-	for _, path := range []string{"/auth/logout", "/me/profile", "/auth/email/verification/request", "/auth/password/change", "/auth/reauthenticate", "/me/sessions"} {
+	router.Use("/auth/oauth", h.oauthBoundary)
+	for _, path := range []string{"/auth/logout", "/me/profile", "/auth/email/verification/request", "/auth/password/change", "/auth/reauthenticate", "/me/sessions", "/me/auth-methods"} {
 		router.Use(path, h.csrfGuard)
 	}
 	generated.RegisterHandlers(router, h)

@@ -20,6 +20,7 @@ official Go APIs. No global Go tools, psql or redis-cli are needed.
 | `pnpm migrate:dev` | Explicit Goose → official River → Worker object grants |
 | `pnpm smoke:dev` | Real pgx/Redis and River execution checks with private config |
 | `pnpm smoke:auth:dev` | Temporary account through real Public HTTP/application handlers, with fixture cleanup |
+| `pnpm smoke:oauth:dev` | Check prepared OAuth pairs, fixed callbacks, PKCE URLs and Redis one-use flows without consent or token exchange |
 | `pnpm integration:ci` | Fresh, guarded loopback disposable PostgreSQL/Redis tests |
 | `pnpm build:images` | Build four local Docker images, without publishing |
 
@@ -70,7 +71,7 @@ the generated facade. Both APIs expose GET `/health/live` and `/health/ready`.
 Live does not fan out; readiness requires PostgreSQL and reports Redis degradation.
 Anonymous public SSR never reads per-user state; `/foundation` is prerendered.
 
-## Local authentication (P0-1A/B)
+## Local authentication (P0-1A/B/C)
 
 Public Web provides `/register`, `/login` and `/account` as anonymous Astro shells
 with React islands. Account data is fetched in the browser through `/api/me`; it
@@ -149,7 +150,7 @@ and refreshes `authenticated_at`. Session management exposes only the user's act
 public sessions. Security events persist only IDs, event type and time, in the same
 transaction as the corresponding write. No production mail provider, SMTP SDK or
 durable raw-token queue is implemented. `MAIL_MODE=disabled` does not make recovery
-production-ready. Remaining scope is P0-1C OAuth/linking and P0-1D Admin/roles/final
+production-ready. Remaining scope is P0-1D Admin/roles/final
 hardening (including abuse controls); this implementation is not production-auth complete.
 
 ## Migrations and shared Infra
@@ -169,7 +170,9 @@ constraints and explicit API DML. Admin/Worker get no identity DML. Always pass
 disposable migration and auth tests before applying new migrations to shared dev.
 Migration 3 adds challenges and security events with minimal API grants and readonly
 SELECT. Security event identity insertion requires no direct sequence grant. Migration
-history 1–3 is immutable once applied to shared development.
+history 1–4 is immutable once applied to shared development. Migration 4 adds OAuth
+event/session constraints, one identity per User/provider, and minimal owned-object
+grants for User locking, provider email metadata and explicit unlinking.
 
 River 0.47.0 refuses to start with zero registered workers (`client.go`, `Start`).
 The only P0-0 job is `infrastructure.probe.v1`: an explicit smoke request that runs
@@ -206,7 +209,7 @@ use fresh containers for each acceptance run. Only this explicitly guarded fixtu
 setup creates cluster roles, on the disposable server.
 
 CI reuses `pnpm check`, repeats generation with Git drift/untracked-file checks,
-runs fresh migrations twice, driver smoke and P0-1A/B auth/database/HTTP/privacy tests,
+runs fresh migrations twice, driver smoke and P0-1A/B/C auth/database/HTTP/privacy tests,
 then builds all four images. Third
 party Actions are pinned to commit SHAs. No deployment, tag, release or image push.
 
@@ -216,7 +219,73 @@ unexecuted gate, never a passing build.
 
 To rerun only auth integration against an already initialized disposable fixture,
 set `CI=true`, `GFP_DISPOSABLE_INFRA=1`, `GFP_AUTH_INTEGRATION=1` and run
-`go -C server test -count=1 -run TestIntegration ./internal/transport/public`.
+`go -C server test -count=1 -run TestIntegration ./internal/transport/public ./internal/redisstore ./internal/oauthprovider`.
 Tests hard-code the disposable loopback database and never read developer URLs.
 The ordinary Go test suite skips these integration tests until explicitly enabled.
 CI mail tests use fake delivery or `t.TempDir`, never network email or developer captures.
+
+## Google/GitHub OAuth and account linking (P0-1C)
+
+Configure only `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
+`GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` in the existing private API
+launch input. Each pair is both present or both absent; partial pairs fail without
+printing values. Disabled providers do not disable local password authentication.
+No callback environment variables or browser provider SDKs are used.
+
+| Provider | Development callback | Future production callback |
+| --- | --- | --- |
+| Google | `http://localhost:4321/api/auth/oauth/google/callback` | `https://gofurry.com/api/auth/oauth/google/callback` |
+| GitHub | `http://localhost:4321/api/auth/oauth/github/callback` | `https://gofurry.com/api/auth/oauth/github/callback` |
+
+Both callbacks are derived exclusively from `PUBLIC_ORIGIN`. Configure those exact
+URLs privately with the corresponding provider. Google requests only `openid email
+profile`; GitHub requests only `read:user user:email`. Both use Authorization Code
+with S256 PKCE. Google additionally uses a nonce and verified OIDC ID tokens. No
+offline access or refresh-token storage is requested. API callback work has a bounded
+15-second context; individual outbound HTTP requests time out after five seconds.
+
+Redis needs `SET` with NX/EX and `GETDEL` within the prepared `gfp:*` namespace.
+The runtime never changes ACLs. CI adds GETDEL only to its disposable runtime role;
+TTL inspection/forced expiry use its separate local test inspector. State has 256
+random bits, keys contain its SHA-256 digest and flows expire in ten minutes. A
+short-lived HttpOnly SameSite=Lax cookie binds each provider flow to its browser.
+The production cookie uses the `__Host-` prefix and Secure. Callback consumes state
+once, including denial/invalid-flow paths, and redirects only to `/account` or
+`/login?oauth_error=<fixed-code>` (account errors remain on `/account`). Do not add
+access logs containing OAuth callback query strings or authorization headers.
+
+Start login at `/api/auth/oauth/{provider}/start`. Account security lists private
+sign-in methods, supports explicit linking, provider/password reauthentication and
+unlinking. Links require authentication within 15 minutes at start and callback.
+Unlinking requires another method and a current session authenticated by a remaining
+method. All mutations require exact Origin and a session-bound CSRF header.
+Link/unlink rotations preserve the method and original authentication time;
+reauthentication refreshes both. Removing a provider revokes its public sessions.
+
+Provider subjects, not email, select accounts. Email collisions require signing into
+the existing account and linking explicitly. An OAuth-only account has an ordinary
+email identity but no password. Its password reset request is an enumeration-safe
+no-op; it can verify email, edit its profile and manage sessions normally. Google
+third-party emails remain locally unverified until GoFurry verification succeeds;
+verified Gmail/Workspace emails and selected verified GitHub emails are trusted.
+Provider profile updates never overwrite the user's edited profile.
+
+After disposable acceptance run `pnpm migrate:dev`, `pnpm smoke:dev`,
+`pnpm smoke:auth:dev` and `pnpm smoke:oauth:dev`. The OAuth smoke prints only provider
+names and boolean outcomes: it neither prints URLs/credentials nor exchanges real
+codes. Missing pairs/callback or Redis capabilities are stop conditions. No shared
+server administration or cluster-role changes are permitted.
+
+For interactive verification, run API and Web, open `/login`, choose the provider,
+complete human consent and check `/account`. Then explicitly link from a password
+account, reauthenticate and unlink using another method. Report Google and GitHub
+separately as PASS only after actual consent; otherwise record
+`NOT RUN — human provider consent required`. Automated fake providers, local signed
+OIDC/JWKS fixtures and concurrency tests never use real credentials or Internet IdPs.
+
+Official behavior verified for this phase:
+[Google OIDC](https://developers.google.com/identity/openid-connect/openid-connect),
+[Google S256 discovery metadata](https://accounts.google.com/.well-known/openid-configuration),
+[Google authoritative email policy](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token),
+[GitHub Web Flow and PKCE](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps),
+[GitHub email API](https://docs.github.com/en/rest/users/emails?apiVersion=2026-03-10).

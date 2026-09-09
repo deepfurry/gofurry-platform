@@ -14,7 +14,7 @@
   reports degraded state while PostgreSQL remains ready.
 - Go 1.27+, Node 24, pnpm workspace; Astro/React 19 public SSR, React 19/Vite admin.
   Tailwind v4 handles layout; SCSS handles appearance.
-- Only `auth` and `identity` product packages in P0-1A/B. No future scaffolds, unused
+- Only `auth` and `identity` product packages in P0-1A/B/C. No future scaffolds, unused
   dependencies, ORM/AutoMigrate, MongoDB, NATS, vectors or observability stack.
 - Business IDs use Go standard-library `uuid.NewV7`. easyhash must explicitly use
   Argon2id and an Argon2id upgrade policy; password hashes never enter transport.

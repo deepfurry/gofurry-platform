@@ -41,7 +41,10 @@
 - go-redis/v9
 - River OSS
 - log/slog
-- golang.org/x/oauth2
+- `golang.org/x/oauth2` v0.37.0 for backend Google/GitHub Authorization Code + S256 PKCE
+- `github.com/coreos/go-oidc/v3` v3.21.0 for Google OIDC verification; its
+  `go-jose/v4` v4.1.4 dependency also signs ephemeral test fixtures. No custom JWT
+  verifier or browser OAuth SDK. Redis stores only ten-minute, one-use OAuth flows.
 - Argon2id through `github.com/gofurry/easyhash` v1.2.0: explicit `WithArgon2id()`
   for new credentials and an explicit Argon2id `VerifyAndUpgrade` policy. The
   library's default bcrypt preference is not GoFurry's password policy.

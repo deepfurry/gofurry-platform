@@ -44,7 +44,7 @@ func (a *App) ResetPassword(ctx context.Context, token, password string) (Grant,
 	if err = consumeChallenge(ctx, q, uuid.UUID(challenge.ID.Bytes), userID, purposeReset, now); err != nil {
 		return Grant{}, err
 	}
-	grant, err := replaceSessions(ctx, q, userID, uuid.Nil(), hash, "password_reset", resetCompleted, now)
+	grant, err := replaceSessions(ctx, q, userID, uuid.Nil(), "password_reset", resetCompleted, now)
 	if err != nil {
 		return Grant{}, err
 	}
@@ -93,7 +93,7 @@ func (a *App) ChangePassword(ctx context.Context, actor Actor, currentPassword, 
 	if err = invalidateChallenges(ctx, q, actor.UserID, purposeReset, now); err != nil {
 		return Grant{}, err
 	}
-	grant, err := replaceSessions(ctx, q, actor.UserID, uuid.Nil(), hash, "password", passwordChanged, now)
+	grant, err := replaceSessions(ctx, q, actor.UserID, uuid.Nil(), "password", passwordChanged, now)
 	if err != nil {
 		return Grant{}, err
 	}
@@ -125,7 +125,7 @@ func (a *App) Reauthenticate(ctx context.Context, actor Actor, password string) 
 	if current != verified {
 		return Grant{}, ErrReauthFailed
 	}
-	grant, err := replaceSessions(ctx, q, actor.UserID, actor.SessionID, verified, "password", reauthenticated, now)
+	grant, err := replaceSessions(ctx, q, actor.UserID, actor.SessionID, "password", reauthenticated, now)
 	if err != nil {
 		return Grant{}, err
 	}
@@ -156,10 +156,10 @@ func (a *App) verifyCurrent(ctx context.Context, actor Actor, password string) (
 	return row.PasswordHash, nil
 }
 
-// With the credential lock held, nil superseded means reset/change (revoke all),
+// With the User auth lock held, nil superseded means reset/change (revoke all),
 // otherwise reauthentication replaces exactly the current session. All writes
 // and the event belong to the caller's transaction; only the caller may commit.
-func replaceSessions(ctx context.Context, q *sqlc.Queries, userID, superseded uuid.UUID, hash, method string, event eventType, now time.Time) (Grant, error) {
+func replaceSessions(ctx context.Context, q *sqlc.Queries, userID, superseded uuid.UUID, method string, event eventType, now time.Time) (Grant, error) {
 	var err error
 	if superseded == uuid.Nil() {
 		err = q.RevokeAllPublicSessions(ctx, sqlc.RevokeAllPublicSessionsParams{UserID: dbID(userID), Now: timestamp(now)})
@@ -170,7 +170,7 @@ func replaceSessions(ctx context.Context, q *sqlc.Queries, userID, superseded uu
 		return Grant{}, database.SafeError("revoke superseded sessions", err)
 	}
 	sessionID, token := uuid.NewV7(), newToken()
-	if err = createSession(ctx, q, userID, sessionID, token, hash, method, now); err != nil {
+	if err = createSession(ctx, q, userID, sessionID, token, method, now); err != nil {
 		return Grant{}, err
 	}
 	if err = recordEvent(ctx, q, event, userID, sessionID, now); err != nil {

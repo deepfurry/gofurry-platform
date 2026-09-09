@@ -1,8 +1,12 @@
 ---
 import AccountLayout from '../layouts/AccountLayout.astro';
 import CredentialsForm from '../components/CredentialsForm';
+import OAuthActions from '../components/OAuthActions.astro';
+import OAuthNotice from '../components/OAuthNotice.astro';
 ---
 <AccountLayout title="Welcome back" description="Log in to manage your GoFurry profile.">
+  <OAuthNotice />
+  <OAuthActions />
   <CredentialsForm mode="login" client:load />
   <noscript>Enable JavaScript to log in securely.</noscript>
   <p><a href="/forgot-password">Forgot your password?</a></p>

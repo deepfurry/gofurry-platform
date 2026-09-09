@@ -14,22 +14,21 @@ import (
 const createSession = `-- name: CreateSession :execrows
 INSERT INTO app.sessions (id, user_id, kind, auth_method, token_hash, authenticated_at, created_at,
                           last_seen_at, idle_expires_at, absolute_expires_at)
-SELECT $1, u.id, 'public', $2, $3, $4, $4,
-       $4, $5, $6
-FROM app.users u JOIN app.password_credentials c ON c.user_id = u.id
-WHERE u.id = $7 AND u.account_state = 'active' AND u.deleted_at IS NULL
-  AND c.password_hash = $8
+SELECT $1, u.id, 'public', $2, $3, $4, $5,
+       $5, $6, $7
+FROM app.users u
+WHERE u.id = $8 AND u.account_state = 'active' AND u.deleted_at IS NULL
 `
 
 type CreateSessionParams struct {
 	ID                pgtype.UUID
 	AuthMethod        string
 	TokenHash         []byte
+	AuthenticatedAt   pgtype.Timestamptz
 	Now               pgtype.Timestamptz
 	IdleExpiresAt     pgtype.Timestamptz
 	AbsoluteExpiresAt pgtype.Timestamptz
 	UserID            pgtype.UUID
-	VerifiedHash      string
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (int64, error) {
@@ -37,11 +36,11 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (i
 		arg.ID,
 		arg.AuthMethod,
 		arg.TokenHash,
+		arg.AuthenticatedAt,
 		arg.Now,
 		arg.IdleExpiresAt,
 		arg.AbsoluteExpiresAt,
 		arg.UserID,
-		arg.VerifiedHash,
 	)
 	if err != nil {
 		return 0, err
@@ -50,7 +49,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (i
 }
 
 const findActiveSessionByTokenHash = `-- name: FindActiveSessionByTokenHash :one
-SELECT s.id, s.user_id, s.kind, s.authenticated_at, s.last_seen_at, s.absolute_expires_at
+SELECT s.id, s.user_id, s.kind, s.auth_method, s.authenticated_at, s.last_seen_at, s.absolute_expires_at
 FROM app.sessions s JOIN app.users u ON u.id = s.user_id
 WHERE s.token_hash = $1 AND s.kind = 'public' AND s.revoked_at IS NULL
   AND s.idle_expires_at > $2 AND s.absolute_expires_at > $2
@@ -66,6 +65,7 @@ type FindActiveSessionByTokenHashRow struct {
 	ID                pgtype.UUID
 	UserID            pgtype.UUID
 	Kind              string
+	AuthMethod        string
 	AuthenticatedAt   pgtype.Timestamptz
 	LastSeenAt        pgtype.Timestamptz
 	AbsoluteExpiresAt pgtype.Timestamptz
@@ -78,6 +78,7 @@ func (q *Queries) FindActiveSessionByTokenHash(ctx context.Context, arg FindActi
 		&i.ID,
 		&i.UserID,
 		&i.Kind,
+		&i.AuthMethod,
 		&i.AuthenticatedAt,
 		&i.LastSeenAt,
 		&i.AbsoluteExpiresAt,
@@ -86,7 +87,7 @@ func (q *Queries) FindActiveSessionByTokenHash(ctx context.Context, arg FindActi
 }
 
 const getActivePublicSessionByID = `-- name: GetActivePublicSessionByID :one
-SELECT s.id FROM app.sessions s JOIN app.users u ON u.id = s.user_id
+SELECT s.id, s.auth_method, s.authenticated_at FROM app.sessions s JOIN app.users u ON u.id = s.user_id
 WHERE s.id = $1 AND s.user_id = $2 AND s.kind = 'public'
   AND s.revoked_at IS NULL AND s.idle_expires_at > $3 AND s.absolute_expires_at > $3
   AND u.account_state = 'active' AND u.deleted_at IS NULL
@@ -98,11 +99,17 @@ type GetActivePublicSessionByIDParams struct {
 	Now    pgtype.Timestamptz
 }
 
-func (q *Queries) GetActivePublicSessionByID(ctx context.Context, arg GetActivePublicSessionByIDParams) (pgtype.UUID, error) {
+type GetActivePublicSessionByIDRow struct {
+	ID              pgtype.UUID
+	AuthMethod      string
+	AuthenticatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetActivePublicSessionByID(ctx context.Context, arg GetActivePublicSessionByIDParams) (GetActivePublicSessionByIDRow, error) {
 	row := q.db.QueryRow(ctx, getActivePublicSessionByID, arg.ID, arg.UserID, arg.Now)
-	var id pgtype.UUID
-	err := row.Scan(&id)
-	return id, err
+	var i GetActivePublicSessionByIDRow
+	err := row.Scan(&i.ID, &i.AuthMethod, &i.AuthenticatedAt)
+	return i, err
 }
 
 const listActivePublicSessions = `-- name: ListActivePublicSessions :many

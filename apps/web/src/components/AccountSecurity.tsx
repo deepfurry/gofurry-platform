@@ -1,10 +1,12 @@
 import { useEffect, useState, type SubmitEvent } from 'react';
-import { changePassword, listSessions, requestEmailVerification, revokeSession, revokeOtherSessions, type Me, type Session } from '@gofurry/api-client/public';
+import { changePassword, listSessions, getAuthMethods, requestEmailVerification, revokeSession, revokeOtherSessions, type Me, type Session, type AuthMethods } from '@gofurry/api-client/public';
+import AuthenticationMethods from './AuthenticationMethods';
 import { authenticatedRequest, validPassword } from '../lib/security';
 import styles from './Account.module.scss';
 
 export default function AccountSecurity({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [methods, setMethods] = useState<AuthMethods | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [revision, setRevision] = useState(0);
@@ -14,6 +16,10 @@ export default function AccountSecurity({ me, onMe }: { me: Me; onMe: (me: Me) =
       if (response.status === 200) setSessions(response.data.sessions);
       else setMessage(response.data.message);
     }).catch(() => { if (!controller.signal.aborted) setMessage('Unable to load sessions. Reload to try again.'); });
+    void getAuthMethods({ signal: controller.signal, credentials: 'same-origin', cache: 'no-store' }).then(response => {
+      if (response.status === 200) setMethods(response.data);
+      else setMessage(response.data.message);
+    }).catch(() => { if (!controller.signal.aborted) setMessage('Unable to load sign-in methods. Reload to try again.'); });
     return () => controller.abort();
   }, [revision]);
   async function resend() {
@@ -53,18 +59,19 @@ export default function AccountSecurity({ me, onMe }: { me: Me; onMe: (me: Me) =
   return <section className="flex flex-col gap-6" aria-labelledby="security-heading">
     <h2 id="security-heading">Account security</h2>
     {!me.email_verified && <button type="button" className={styles.button} disabled={busy} onClick={() => { void resend(); }}>Send verification email</button>}
-    <form onSubmit={passwordChange} className="flex flex-col gap-4">
+    {methods && <AuthenticationMethods methods={methods} changed={next => { if (next) onMe(next); setRevision(value => value + 1); }} />}
+    {methods?.password && <form onSubmit={passwordChange} className="flex flex-col gap-4">
       <h3>Change password</h3>
       <label className="flex flex-col gap-2">Current password<input className={styles.input} type="password" name="current_password" autoComplete="current-password" required /></label>
       <label className="flex flex-col gap-2">New password<input className={styles.input} type="password" name="new_password" autoComplete="new-password" required aria-describedby="new-password-help" /></label>
       <p id="new-password-help" className={styles.hint}>15–128 characters. Changing your password signs out all previous sessions.</p>
       <label className="flex flex-col gap-2">Confirm new password<input className={styles.input} type="password" name="confirm_password" autoComplete="new-password" required /></label>
       <button type="submit" className={styles.button} disabled={busy}>Change password</button>
-    </form>
+    </form>}
     <h3>Active sessions</h3>
     <ul className="flex flex-col gap-4">
       {sessions.map(session => <li key={session.id} className="flex flex-col gap-2">
-        <p>{session.current ? 'This session' : 'Another session'} · {session.auth_method === 'password_reset' ? 'Password reset' : 'Password login'}</p>
+        <p>{session.current ? 'This session' : 'Another session'} · {{ password: 'Password', password_reset: 'Password reset', google: 'Google', github: 'GitHub' }[session.auth_method]}</p>
         <p className={styles.hint}>Started {new Date(session.created_at).toLocaleString()}. Last active {new Date(session.last_seen_at).toLocaleString()}.</p>
         <button type="button" className={styles.button} disabled={busy} onClick={() => { void revoke(session); }}>{session.current ? 'Sign out this session' : 'Sign out session'}</button>
       </li>)}

@@ -13,7 +13,7 @@ apps/web / apps/admin → generated API clients → Public/Admin transport
 worker → jobs adapter → shared Application/Domain (when implemented)
 ```
 
-P0-1A/B add local auth, PostgreSQL sessions, recovery and basic profiles to P0-0 infrastructure.
+P0-1A/B/C add local/OAuth auth, PostgreSQL sessions, recovery and basic profiles to P0-0 infrastructure.
 Only `auth` and `identity` are product packages. `cmd/*` composes dependencies, signals and
 bounded cleanup; reusable behavior lives in `internal/`.
 
@@ -21,6 +21,13 @@ Auth owns the challenge-mail interface; `internal/mail` implements post-commit l
 capture. Challenges persist only easyhash token hashes; security events accept only
 IDs, a closed event type and time. Public unsafe authenticated routes require exact
 Origin and a session-bound HMAC CSRF value; rotation invalidates the previous value.
+
+Auth owns the narrow OAuth provider and ephemeral-flow interfaces. `oauthprovider`
+uses OAuth2/OIDC libraries and returns validated identity fields, never provider
+tokens. `redisstore` implements one-use, ten-minute flows under `gfp:auth:oauth:flow:`.
+Account resolution uses provider subjects; email collisions require explicit linking.
+All existing-user auth mutations take the User lock before credential/identity/
+session/challenge locks. Provider network I/O and KDFs stay outside transactions.
 
 Worker never calls Public/Admin HTTP. Application/domain code must not import Fiber,
 transport DTOs, Redis or River. River types stay inside Jobs infrastructure and its

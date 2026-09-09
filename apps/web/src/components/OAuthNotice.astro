@@ -1,0 +1,14 @@
+---
+const messages: Record<string, string> = {
+  provider_denied: 'Sign-in was cancelled. You can try again when you are ready.',
+  provider_unavailable: 'This sign-in provider is unavailable. Please try again later or use another sign-in method.',
+  provider_invalid: 'This sign-in attempt is invalid or expired. Please start again.',
+  account_link_required: 'An account already uses this email. Sign in with your existing method, then link the provider from Account security.',
+  provider_already_linked: 'This provider account cannot be linked. It may already belong to another account.',
+  reauth_required: 'Reauthenticate with a remaining sign-in method in Account security, then try again.',
+  reauth_failed: 'We could not verify this sign-in attempt. Use the provider account already linked to your account.',
+};
+const code = Astro.url.searchParams.get('oauth_error');
+const message = code && Object.hasOwn(messages, code) ? messages[code] : code ? 'Sign-in could not be completed. Please start again.' : '';
+---
+{message && <p role="alert">{message}</p>}

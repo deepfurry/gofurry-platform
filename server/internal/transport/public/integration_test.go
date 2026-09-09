@@ -44,7 +44,7 @@ type fixture struct {
 	mail       *fakeMailer
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T, oauth ...auth.OAuthConfig) *fixture {
 	t.Helper()
 	if os.Getenv("GFP_AUTH_INTEGRATION") != "1" {
 		t.Skip("explicit disposable auth integration not enabled")
@@ -67,7 +67,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal("disposable database is not ready")
 	}
 	mailer := &fakeMailer{}
-	authentication, err := auth.New(api, mailer)
+	authentication, err := auth.New(api, mailer, oauth...)
 	if err != nil {
 		t.Fatal("authentication initialization failed")
 	}
@@ -384,7 +384,7 @@ func TestIntegrationUpgradeAndConcurrency(t *testing.T) {
 		t.Fatal("concurrent email uniqueness failed")
 	}
 	var orphanCount int
-	if err := f.owner.QueryRow(ctx, `SELECT count(*) FROM app.users u WHERE NOT EXISTS (SELECT 1 FROM app.auth_identities a WHERE a.user_id=u.id) OR NOT EXISTS (SELECT 1 FROM app.user_profiles p WHERE p.user_id=u.id) OR NOT EXISTS (SELECT 1 FROM app.password_credentials c WHERE c.user_id=u.id)`).Scan(&orphanCount); err != nil || orphanCount != 0 {
+	if err := f.owner.QueryRow(ctx, `SELECT count(*) FROM app.users u WHERE NOT EXISTS (SELECT 1 FROM app.auth_identities a WHERE a.user_id=u.id AND a.provider='email') OR NOT EXISTS (SELECT 1 FROM app.user_profiles p WHERE p.user_id=u.id) OR (NOT EXISTS (SELECT 1 FROM app.password_credentials c WHERE c.user_id=u.id) AND NOT EXISTS (SELECT 1 FROM app.auth_identities a WHERE a.user_id=u.id AND a.provider IN ('google','github')))`).Scan(&orphanCount); err != nil || orphanCount != 0 {
 		t.Fatal("registration left partial records")
 	}
 	other, err := f.auth.Register(ctx, emailFixture(), testPassword)
@@ -424,7 +424,7 @@ func TestIntegrationSchemaAndPrivileges(t *testing.T) {
 		t.Fatal("unexpected application schema or future tables")
 	}
 	var version int
-	if err := f.owner.QueryRow(ctx, "SELECT max(version_id) FROM app.goose_db_version WHERE is_applied").Scan(&version); err != nil || version != 3 {
+	if err := f.owner.QueryRow(ctx, "SELECT max(version_id) FROM app.goose_db_version WHERE is_applied").Scan(&version); err != nil || version != 4 {
 		t.Fatal("fresh migration chain failed")
 	}
 	for _, role := range []string{"gfp_api", "gfp_admin", "gfp_worker"} {
@@ -455,6 +455,7 @@ func TestIntegrationSchemaAndPrivileges(t *testing.T) {
 		{"UPDATE app.user_profiles SET bio=repeat('x',501) WHERE user_id=$1", "23514", []any{id}},
 		{"UPDATE app.sessions SET token_hash='short'::bytea WHERE user_id=$1", "23514", []any{id}},
 		{"UPDATE app.sessions SET kind='other' WHERE user_id=$1", "23514", []any{id}},
+		{"UPDATE app.sessions SET auth_method='future-provider' WHERE user_id=$1", "23514", []any{id}},
 		{"DELETE FROM app.users WHERE id=$1", "23001", []any{id}},
 		{"INSERT INTO app.users(created_at,updated_at) VALUES(now(),now())", "23502", nil},
 	} {

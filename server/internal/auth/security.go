@@ -33,6 +33,10 @@ const (
 	reauthenticated       eventType = "reauthenticated"
 	sessionRevoked        eventType = "session_revoked"
 	otherSessionsRevoked  eventType = "other_sessions_revoked"
+	oauthLoginSucceeded   eventType = "oauth_login_succeeded"
+	oauthIdentityLinked   eventType = "oauth_identity_linked"
+	oauthIdentityUnlinked eventType = "oauth_identity_unlinked"
+	oauthReauthenticated  eventType = "oauth_reauthenticated"
 )
 
 // Events accept identifiers and a closed event type, never arbitrary metadata.
@@ -45,10 +49,24 @@ func recordEvent(ctx context.Context, q *sqlc.Queries, event eventType, userID, 
 	return nil
 }
 
-// Every existing-account authentication mutation takes this lock first. It
-// serializes login/rotation/revocation/challenges without holding it during KDFs
-// or mail delivery. This also prevents an old-password login escaping a reset.
+// All auth mutations first serialize on the active User, including OAuth-only
+// accounts. Never hold this lock during password KDFs or provider/mail network I/O.
+func lockUser(ctx context.Context, q *sqlc.Queries, userID uuid.UUID) error {
+	_, err := q.LockUserAuthState(ctx, dbID(userID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrUnauthenticated
+	}
+	if err != nil {
+		return database.SafeError("lock user authentication", err)
+	}
+	return nil
+}
+
+// Password operations also re-read the credential after taking the User lock.
 func lockCredential(ctx context.Context, q *sqlc.Queries, userID uuid.UUID) (string, error) {
+	if err := lockUser(ctx, q, userID); err != nil {
+		return "", err
+	}
 	row, err := q.LockPasswordCredential(ctx, dbID(userID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrUnauthenticated
@@ -112,7 +130,7 @@ func (a *App) revoke(ctx context.Context, actor Actor, target uuid.UUID, event e
 	}
 	defer tx.Rollback(ctx)
 	q := sqlc.New(tx)
-	if _, err = lockCredential(ctx, q, actor.UserID); err != nil {
+	if err = lockUser(ctx, q, actor.UserID); err != nil {
 		return err
 	}
 	now := a.now().UTC()

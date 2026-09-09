@@ -24,6 +24,7 @@ const (
 type Actor struct {
 	UserID, SessionID uuid.UUID
 	SessionKind       string
+	AuthMethod        string
 	AuthenticatedAt   time.Time
 }
 
@@ -73,17 +74,21 @@ func (a *App) Resolve(ctx context.Context, token string) (Actor, error) {
 			return Actor{}, database.SafeError("recheck session", err)
 		}
 	}
-	return Actor{UserID: uuid.UUID(session.UserID.Bytes), SessionID: uuid.UUID(session.ID.Bytes), SessionKind: session.Kind, AuthenticatedAt: session.AuthenticatedAt.Time}, nil
+	return Actor{UserID: uuid.UUID(session.UserID.Bytes), SessionID: uuid.UUID(session.ID.Bytes), SessionKind: session.Kind, AuthMethod: session.AuthMethod, AuthenticatedAt: session.AuthenticatedAt.Time}, nil
 }
 
 func (a *App) Logout(ctx context.Context, actor Actor) error {
 	return a.revoke(ctx, actor, actor.SessionID, loggedOut)
 }
 
-func createSession(ctx context.Context, q *sqlc.Queries, userID, sessionID uuid.UUID, token, verifiedHash, authMethod string, now time.Time) error {
+func createSession(ctx context.Context, q *sqlc.Queries, userID, sessionID uuid.UUID, token, authMethod string, now time.Time) error {
+	return createSessionAuthenticatedAt(ctx, q, userID, sessionID, token, authMethod, now, now)
+}
+
+func createSessionAuthenticatedAt(ctx context.Context, q *sqlc.Queries, userID, sessionID uuid.UUID, token, authMethod string, now, authenticatedAt time.Time) error {
 	hash, _ := tokenHash(token)
 	n, err := q.CreateSession(ctx, sqlc.CreateSessionParams{ID: dbID(sessionID), UserID: dbID(userID), TokenHash: hash[:], Now: timestamp(now), AuthMethod: authMethod,
-		IdleExpiresAt: timestamp(now.Add(IdleLifetime)), AbsoluteExpiresAt: timestamp(now.Add(AbsoluteLifetime)), VerifiedHash: verifiedHash})
+		AuthenticatedAt: timestamp(authenticatedAt), IdleExpiresAt: timestamp(now.Add(IdleLifetime)), AbsoluteExpiresAt: timestamp(now.Add(AbsoluteLifetime))})
 	if err != nil {
 		return database.SafeError("create session", err)
 	}

@@ -3,6 +3,8 @@ module github.com/deepfurry/gofurry-platform/server
 go 1.27.1
 
 require (
+	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/gofiber/fiber/v3 v3.5.0
 	github.com/gofurry/easyhash v1.2.0
 	github.com/jackc/pgx/v5 v5.11.0
@@ -11,6 +13,7 @@ require (
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/riverqueue/river v0.47.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.47.0
+	golang.org/x/oauth2 v0.37.0
 )
 
 require (

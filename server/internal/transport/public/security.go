@@ -131,7 +131,7 @@ func (h *Handler) ListSessions(c fiber.Ctx) error {
 	}
 	result := generated.SessionList{Sessions: make([]generated.Session, 0, len(sessions))}
 	for _, session := range sessions {
-		result.Sessions = append(result.Sessions, generated.Session{Id: session.ID.String(), AuthMethod: session.AuthMethod,
+		result.Sessions = append(result.Sessions, generated.Session{Id: session.ID.String(), AuthMethod: generated.SessionAuthMethod(session.AuthMethod),
 			AuthenticatedAt: session.AuthenticatedAt, CreatedAt: session.CreatedAt, LastSeenAt: session.LastSeenAt,
 			IdleExpiresAt: session.IdleExpiresAt, AbsoluteExpiresAt: session.AbsoluteExpiresAt, Current: session.Current})
 	}

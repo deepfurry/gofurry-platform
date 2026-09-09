@@ -200,7 +200,21 @@ func respondError(c fiber.Ctx, err error) error {
 	case errors.Is(err, auth.ErrChallengeInvalid):
 		status, code, message = 400, generated.AUTHCHALLENGEINVALID, "This link is invalid or expired."
 	case errors.Is(err, auth.ErrReauthFailed):
-		status, code, message = 401, generated.AUTHREAUTHFAILED, "Password verification failed."
+		status, code, message = 401, generated.AUTHREAUTHFAILED, "Authentication verification failed."
+	case errors.Is(err, auth.ErrProviderUnavailable):
+		status, code, message = 503, generated.AUTHPROVIDERUNAVAILABLE, "This sign-in provider is unavailable."
+	case errors.Is(err, auth.ErrProviderInvalid), errors.Is(err, auth.ErrProviderDenied):
+		status, code, message = 400, generated.AUTHPROVIDERINVALID, "Provider authorization is invalid or expired."
+	case errors.Is(err, auth.ErrProviderAlreadyLinked):
+		status, code, message = 409, generated.AUTHPROVIDERALREADYLINKED, "This provider account cannot be linked."
+	case errors.Is(err, auth.ErrProviderNotLinked):
+		status, code, message = 409, generated.AUTHPROVIDERNOTLINKED, "This provider is not linked."
+	case errors.Is(err, auth.ErrAccountLinkRequired):
+		status, code, message = 409, generated.AUTHACCOUNTLINKREQUIRED, "Sign in to your existing account to link this provider."
+	case errors.Is(err, auth.ErrReauthRequired):
+		status, code, message = 403, generated.AUTHREAUTHREQUIRED, "Reauthenticate with a remaining sign-in method to continue."
+	case errors.Is(err, auth.ErrLastMethod):
+		status, code, message = 409, generated.AUTHLASTMETHOD, "Keep at least one sign-in method."
 	case errors.Is(err, auth.ErrSessionNotFound):
 		status, code, message = 404, generated.AUTHSESSIONNOTFOUND, "Session not found."
 	case errors.Is(err, auth.ErrMailUnavailable):

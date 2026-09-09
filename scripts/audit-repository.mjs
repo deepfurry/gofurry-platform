@@ -23,7 +23,7 @@ if (!process.env.CI) {
     try { env = parseEnv(readFileSync(join(root, path), 'utf8')); }
     catch { throw new Error('Cannot audit private launch input (contents withheld)'); }
     for (const [key, value] of Object.entries(env)) {
-      if (/(PASSWORD|SECRET|TOKEN|DSN|DATABASE_URL|REDIS_URL)/i.test(key) && value.length >= 8) privateValues.add(value);
+      if (/(PASSWORD|SECRET|TOKEN|DSN|DATABASE_URL|REDIS_URL|OAUTH_CLIENT_ID)/i.test(key) && value.length >= 8) privateValues.add(value);
       try {
         const url = new URL(value);
         if (url.password.length >= 8) { privateValues.add(url.password); privateValues.add(decodeURIComponent(url.password)); }
@@ -47,6 +47,7 @@ for (const path of files) {
   if (path.endsWith('.go') && !path.startsWith('server/internal/jobs/') && /"github\.com\/riverqueue\//.test(content)) throw new Error(`River import outside Jobs: ${path}`);
   if (/^server\/internal\/(auth|identity)\/.*\.go$/.test(path) && /"(?:github\.com\/gofiber\/|github\.com\/google\/uuid|github\.com\/redis\/|github\.com\/deepfurry\/gofurry-platform\/server\/internal\/transport\/)/.test(content)) throw new Error(`Application boundary violation: ${path}`);
   if (/^apps\//.test(path) && /@gofurry\/api-client\/.*generated/.test(content)) throw new Error(`Deep generated client import: ${path}`);
+  if (/^server\/internal\/oauthprovider\/.*\.go$/.test(path) && /(?:SkipClientIDCheck|SkipIssuerCheck|SkipExpiryCheck|InsecureSkipSignatureCheck)\s*:\s*true/.test(content)) throw new Error(`Unsafe OIDC verifier in ${path}`);
 }
 if (files.filter(path => path.endsWith('go.mod')).join() !== 'server/go.mod' || files.some(path => path.endsWith('go.work'))) throw new Error('Expected one server/go.mod and no go.work');
 const forbiddenDomains = ['resource', 'taxonomy', 'collection', 'contribution', 'discovery', 'exchange', 'discussion', 'poll', 'trust', 'moderation', 'notification', 'analytics'];

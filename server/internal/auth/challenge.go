@@ -51,7 +51,7 @@ func challengeHash(token string) (string, error) {
 }
 
 // Call inside the registration transaction, or while holding the user's
-// credential lock. The partial unique index is the final issuance invariant.
+// User auth lock. The partial unique index is the final issuance invariant.
 func issueChallenge(ctx context.Context, q *sqlc.Queries, userID, identityID uuid.UUID, email string, purpose challengePurpose, now time.Time) (*pendingChallenge, error) {
 	latest, err := q.GetLatestChallenge(ctx, sqlc.GetLatestChallengeParams{AuthIdentityID: dbID(identityID), Purpose: string(purpose)})
 	if err == nil && latest.CreatedAt.Time.Add(ChallengeCooldown).After(now) {
@@ -125,7 +125,7 @@ func (a *App) RequestVerification(ctx context.Context, actor Actor) error {
 	}
 	defer tx.Rollback(ctx)
 	q := sqlc.New(tx)
-	if _, err = lockCredential(ctx, q, actor.UserID); err != nil {
+	if err = lockUser(ctx, q, actor.UserID); err != nil {
 		return err
 	}
 	now := a.now().UTC()
@@ -262,7 +262,7 @@ func (a *App) VerifyEmail(ctx context.Context, token string) error {
 	}
 	defer tx.Rollback(ctx)
 	q, userID := sqlc.New(tx), uuid.UUID(initial.UserID.Bytes)
-	if _, err = lockCredential(ctx, q, userID); errors.Is(err, ErrUnauthenticated) {
+	if err = lockUser(ctx, q, userID); errors.Is(err, ErrUnauthenticated) {
 		return ErrChallengeInvalid
 	}
 	if err != nil {

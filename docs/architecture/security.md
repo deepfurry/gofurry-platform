@@ -19,9 +19,9 @@ Public Profile
 
 Authentication identity is private and separate from public profile identity.
 
-Implemented P0-1A/B scope is local authentication, basic profiles, public sessions,
-email verification and password recovery. Provider/Admin/abuse-control sections below
-describe later P0-1C/D work, not capabilities already deployed.
+Implemented P0-1A/B/C scope includes local and Google/GitHub authentication, explicit
+account linking, basic profiles, public sessions, email verification and recovery.
+Admin and abuse controls remain P0-1D work; production deployment is outside this phase.
 
 ## OAuth
 
@@ -217,7 +217,9 @@ challenge_failed
 The implemented P0-1B event types are `account_registered`, `login_succeeded`,
 `logout`, `email_verification_requested`, `email_verified`, `password_reset_requested`,
 `password_reset_completed`, `password_changed`, `reauthenticated`, `session_revoked`
-and `other_sessions_revoked`. The broader list above describes future events.
+and `other_sessions_revoked`. P0-1C adds `oauth_login_succeeded`,
+`oauth_identity_linked`, `oauth_identity_unlinked` and `oauth_reauthenticated`.
+The broader list above describes future events.
 `app.security_events` allows only a generated bigint ID, user ID, historical session
 ID, closed event type and timestamp. No metadata/email/IP/user-agent field exists.
 Event insertion commits in the same transaction as the corresponding state change.
@@ -244,3 +246,42 @@ Go trusts forwarding/IP headers only through the controlled Cloudflare → Nginx
 Use environment/Docker-secret style deployment.
 
 No Vault requirement for P0.
+
+## P0-1C OAuth boundary
+
+Google identity is the verified OIDC `sub`; GitHub identity is its decimal numeric
+user ID. Provider email/name/avatar is never an identity key. Known subjects keep
+their User even when upstream email changes. New subjects never auto-link by email;
+an existing canonical email requires explicit linking from an authenticated account.
+New OAuth Users have User/Profile/email/provider identity rows and no password row.
+Only verified Gmail/Workspace Google email is authoritative; other Google email
+uses normal GoFurry verification. GitHub chooses primary verified email, then a
+verified fallback, and refuses new-account creation without one.
+
+Auth owns transactions plus provider/flow interfaces; the adapter returns validated
+identity fields only. OAuth2 access/refresh/ID tokens never leave the callback adapter
+or enter PostgreSQL, Redis, jobs, events, logs or frontend storage. Google signature,
+issuer, audience and expiry use go-oidc; nonce and authorized party are checked too.
+Both providers use S256 PKCE. Endpoint configuration is fixed, redirects are disabled
+on outbound requests, and provider network operations precede database transactions.
+
+One-use 256-bit state is stored by SHA-256 digest under `gfp:auth:oauth:flow:` for ten
+minutes with NX and GETDEL. Its payload contains only provider, mode, PKCE verifier,
+Google nonce, optional User/session IDs and creation time. A per-provider HttpOnly
+cookie binds the callback to the initiating browser. Link/reauth additionally require
+the exact initiating User/session, revalidated after the common User lock.
+
+All existing-user auth writes serialize on the active User before other row locks.
+Local login rereads its credential after that lock. OAuth login rejects flows older
+than a password change/reset, preventing an in-flight callback from issuing a session
+after revocation. If OAuth wins first, password reset/change revokes its session.
+No credential row is required for verification, logout or session management.
+
+Link/unlink require authentication within 15 minutes; activity never renews that
+window. Link/unlink rotate cookies while preserving auth_method/authenticated_at.
+Provider reauth matches an already-linked subject and rotates with fresh provider
+authentication. Unlink cannot remove the last method or its current session method;
+reauthenticate with a remaining method first. Unlink revokes all sessions using the
+removed provider. Origin and CSRF remain mandatory for every unsafe owner operation.
+OAuth callbacks use no-store/no-referrer and fixed same-origin destinations with
+allowlisted error codes. Provider errors and arbitrary return URLs are never echoed.

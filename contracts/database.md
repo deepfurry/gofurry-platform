@@ -44,12 +44,21 @@ account/identity/profile/session invariants; public views never SELECT credentia
 Migration 3 adds `auth_challenges` and `security_events`. Challenges have one
 unconsumed/non-invalidated row per identity/purpose, enforced by a partial unique
 index. Indexed token hashes identify challenges; consumption is revalidated inside
-the transaction. Auth mutations lock the credential row before challenge/session
-writes, and run password KDFs outside transactions. Reset/change revoke public
-sessions and create their replacement atomically with the event.
+the transaction. Auth mutations lock the User, then the credential row when needed,
+before identity/session/challenge writes, and run password KDFs outside transactions.
+Reset/change revoke public sessions and create their replacement atomically with the event.
 
 API may SELECT/INSERT/UPDATE challenges, INSERT events and update identity
 verification timestamps. It cannot read/update events or access their identity
 sequence directly. Admin/Worker gain no rights; readonly may SELECT. Event session
 IDs are historical references without a session FK; event users retain restrictive
 FKs. Events have no arbitrary metadata/email/credential fields.
+
+Migration 4 extends the event CHECK and constrains session auth methods to password,
+password_reset, google and github. One partial unique index enforces one linked
+identity per User/provider. OAuth-only Users still have an email identity and profile,
+but no password credential. API receives only owned-object UPDATE(updated_at) on
+users for row locking, UPDATE(email) on identities for private metadata, and DELETE
+on identities for unlinking. Runtime SQL restricts deletion to Google/GitHub rows.
+These object grants use the prepared migrator; cluster roles remain unchanged.
+OAuth state/PKCE/nonce and provider tokens never enter application tables.

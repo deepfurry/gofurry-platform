@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Add P0-1C Google OIDC and GitHub OAuth Web Flow with S256 PKCE, browser-bound
+  one-use Redis state and fixed callbacks; provider tokens remain transient.
+- Resolve accounts by verified provider subject, reject email auto-linking, and
+  create OAuth-only accounts with an email identity and no password credential.
+- Add explicit auth-method listing/linking, provider reauthentication and safe
+  unlinking with 15-minute freshness, session rotation and provider-session revocation.
+- Add migration 4 for OAuth events, session-method constraints and provider
+  uniqueness; serialize authentication mutations on User rows, including OAuth-only
+  accounts and OAuth callbacks racing password reset/change. Preserve migrations 1–3.
+- Extend generated Public contracts/clients and account UI for provider sign-in,
+  private method metadata, safe callback errors and remaining-method reauthentication.
+- Add signed fake OIDC/provider, disposable Redis, security and concurrency tests,
+  plus a redacted real-development OAuth configuration/capability smoke command.
+
 - Add P0-1B migration 3 for single-use auth challenges and transactional security
   events, with minimal API privileges and no new dependency or product domain.
 - Require session-bound HMAC CSRF and exact Origin for authenticated unsafe Public

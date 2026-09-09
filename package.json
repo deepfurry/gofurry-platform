@@ -22,6 +22,7 @@
     "migrate:dev": "node scripts/run-local.mjs migrator",
     "smoke:dev": "node scripts/smoke-dev.mjs",
     "smoke:auth:dev": "node scripts/smoke-auth-dev.mjs",
+    "smoke:oauth:dev": "node scripts/smoke-oauth-dev.mjs",
     "integration:ci": "node scripts/integration-ci.mjs",
     "build:images": "node scripts/build-images.mjs"
   },

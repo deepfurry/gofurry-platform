@@ -11,16 +11,28 @@ import (
 )
 
 type Config struct {
-	Environment    string
-	HTTPAddr       string
-	DatabaseURL    string
-	RedisURL       string
-	RedisKeyPrefix string
-	RiverSchema    string
-	PublicOrigin   string
-	CSRFSecret     string
-	MailMode       string
-	MailLocalDir   string
+	Environment              string
+	HTTPAddr                 string
+	DatabaseURL              string
+	RedisURL                 string
+	RedisKeyPrefix           string
+	RiverSchema              string
+	PublicOrigin             string
+	CSRFSecret               string
+	MailMode                 string
+	MailLocalDir             string
+	GoogleOAuth, GitHubOAuth OAuthCredentials
+}
+
+type OAuthCredentials struct{ ClientID, ClientSecret string }
+
+func (c OAuthCredentials) Enabled() bool { return c.ClientID != "" && c.ClientSecret != "" }
+
+func (c Config) OAuthCallback(provider string) (string, error) {
+	if provider != "google" && provider != "github" {
+		return "", errors.New("unsupported OAuth provider")
+	}
+	return c.PublicOrigin + "/api/auth/oauth/" + provider + "/callback", nil
 }
 
 const DevelopmentCSRFSecret = "gofurry-development-only-csrf-secret"
@@ -51,6 +63,13 @@ func load(service string, env func(string) string) (Config, error) {
 		}
 	}
 	if service == "api" {
+		c.GoogleOAuth = OAuthCredentials{env("GOOGLE_OAUTH_CLIENT_ID"), env("GOOGLE_OAUTH_CLIENT_SECRET")}
+		c.GitHubOAuth = OAuthCredentials{env("GITHUB_OAUTH_CLIENT_ID"), env("GITHUB_OAUTH_CLIENT_SECRET")}
+		for _, pair := range []OAuthCredentials{c.GoogleOAuth, c.GitHubOAuth} {
+			if (pair.ClientID == "") != (pair.ClientSecret == "") {
+				return Config{}, errors.New("OAuth credential pairs must be both present or both absent (values withheld)")
+			}
+		}
 		c.PublicOrigin = env("PUBLIC_ORIGIN")
 		if c.PublicOrigin == "" && c.Environment == "development" {
 			c.PublicOrigin = "http://localhost:4321"

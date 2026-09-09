@@ -12,4 +12,4 @@ run('go', ['run', './cmd/migrate', '-database', 'gfp_ci'], { cwd, env: serviceEn
 // Repeat up to verify version tracking and the idempotent official River path.
 run('go', ['run', './cmd/migrate', '-database', 'gfp_ci'], { cwd, env: serviceEnv('migrator') });
 for (const service of ['api', 'admin', 'migrator', 'worker']) run('go', ['run', './cmd/smoke', '-service', service, '-database', 'gfp_ci'], { cwd, env: serviceEnv(service) });
-run('go', ['test', '-count=1', '-timeout=3m', '-run', 'TestIntegration', './internal/transport/public'], { cwd, env: { ...env, GFP_AUTH_INTEGRATION: '1' } });
+run('go', ['test', '-count=1', '-timeout=3m', '-run', 'TestIntegration', './internal/transport/public', './internal/redisstore', './internal/oauthprovider'], { cwd, env: { ...env, GFP_AUTH_INTEGRATION: '1' } });

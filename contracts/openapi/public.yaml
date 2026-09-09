@@ -4,6 +4,101 @@ info:
   version: 0.1.0
   description: Public health, local authentication, session security and basic profiles. Unsafe requests require exact PUBLIC_ORIGIN; authenticated unsafe requests also require a session-bound CSRF header.
 paths:
+  /auth/oauth/{provider}/start:
+    get:
+      operationId: startOAuth
+      parameters: [{$ref: '#/components/parameters/Provider'}]
+      description: Start login with one-time, browser-bound state and S256 PKCE. No return URL is accepted.
+      responses:
+        '302':
+          $ref: '#/components/responses/OAuthRedirect'
+  /auth/oauth/{provider}/callback:
+    get:
+      operationId: completeOAuth
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - {in: query, name: state, schema: {type: string}}
+        - {in: query, name: code, schema: {type: string}}
+        - {in: query, name: error, schema: {type: string}}
+      description: Consume one-time state, validate provider identity and commit before setting a session cookie. Redirect only to fixed same-origin pages; never forward provider errors or tokens.
+      responses:
+        '302':
+          $ref: '#/components/responses/OAuthRedirect'
+  /me/auth-methods:
+    get:
+      operationId: getAuthMethods
+      security: [{PublicSession: []}]
+      responses:
+        '200':
+          description: Private authentication methods, without provider subjects or tokens. Cache-Control no-store.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthMethods'}
+        '401':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /me/auth-methods/{provider}/link:
+    post:
+      operationId: linkOAuthProvider
+      security: [{PublicSession: []}]
+      parameters: [{$ref: '#/components/parameters/Provider'}, {$ref: '#/components/parameters/CSRF'}]
+      description: Requires authentication within 15 minutes. Returns provider URL and sets an HttpOnly flow binding cookie. Callback revalidates the initiating session and freshness.
+      responses:
+        '200':
+          $ref: '#/components/responses/OAuthAuthorization'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /me/auth-methods/{provider}/reauthenticate:
+    post:
+      operationId: reauthenticateOAuthProvider
+      security: [{PublicSession: []}]
+      parameters: [{$ref: '#/components/parameters/Provider'}, {$ref: '#/components/parameters/CSRF'}]
+      description: Reauthenticate with the exact linked provider subject. Callback rotates the current session and refreshes authenticated_at.
+      responses:
+        '200':
+          $ref: '#/components/responses/OAuthAuthorization'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /me/auth-methods/{provider}:
+    delete:
+      operationId: unlinkOAuthProvider
+      security: [{PublicSession: []}]
+      parameters: [{$ref: '#/components/parameters/Provider'}, {$ref: '#/components/parameters/CSRF'}]
+      description: Requires freshness within 15 minutes and another authentication method. The current auth_method must differ from the removed provider. Revokes its sessions, rotates this session, preserving its authentication time and method.
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
   /auth/register:
     post:
       operationId: register
@@ -320,6 +415,11 @@ paths:
                 $ref: '#/components/schemas/Ready'
 components:
   parameters:
+    Provider:
+      in: path
+      name: provider
+      required: true
+      schema: {$ref: '#/components/schemas/OAuthProvider'}
     CSRF:
       in: header
       name: X-CSRF-Token
@@ -340,6 +440,18 @@ components:
           schema:
             $ref: '#/components/schemas/Credentials'
   responses:
+    OAuthRedirect:
+      description: No-store, no-referrer redirect. Start sets a short-lived HttpOnly flow cookie; a successful callback sets the public session cookie after commit.
+      headers:
+        Location:
+          schema: {type: string}
+        Set-Cookie:
+          schema: {type: string}
+    OAuthAuthorization:
+      description: No-store authorization URL for a top-level browser navigation, with an HttpOnly flow binding cookie. Never store the URL.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/OAuthAuthorization'}
     Accepted:
       description: Request accepted, including cooldown or ineligible account. No challenge token is returned.
       content:
@@ -370,6 +482,32 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
   schemas:
+    OAuthProvider:
+      type: string
+      enum: [google, github]
+    OAuthAuthorization:
+      type: object
+      additionalProperties: false
+      required: [authorization_url]
+      properties:
+        authorization_url: {type: string}
+    AuthMethods:
+      type: object
+      additionalProperties: false
+      required: [password, providers]
+      properties:
+        password: {type: boolean}
+        providers:
+          type: array
+          items: {$ref: '#/components/schemas/ProviderMethod'}
+    ProviderMethod:
+      type: object
+      additionalProperties: false
+      required: [provider, email, linked_at]
+      properties:
+        provider: {$ref: '#/components/schemas/OAuthProvider'}
+        email: {type: string, nullable: true}
+        linked_at: {type: string, format: date-time}
     Accepted:
       type: object
       additionalProperties: false
@@ -429,7 +567,7 @@ components:
       required: [id, auth_method, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, current]
       properties:
         id: {type: string, format: uuid, x-go-type: string}
-        auth_method: {type: string}
+        auth_method: {type: string, enum: [password, password_reset, google, github]}
         authenticated_at: {type: string, format: date-time}
         created_at: {type: string, format: date-time}
         last_seen_at: {type: string, format: date-time}
@@ -458,7 +596,7 @@ components:
       properties:
         code:
           type: string
-          enum: [VALIDATION_ERROR, AUTH_EMAIL_ALREADY_REGISTERED, AUTH_INVALID_CREDENTIALS, AUTH_UNAUTHENTICATED, AUTH_ACCOUNT_DISABLED, PROFILE_HANDLE_UNAVAILABLE, PROFILE_NOT_FOUND, ORIGIN_FORBIDDEN, CSRF_INVALID, AUTH_CHALLENGE_INVALID, AUTH_REAUTH_FAILED, AUTH_SESSION_NOT_FOUND, MAIL_UNAVAILABLE, INTERNAL_ERROR]
+          enum: [VALIDATION_ERROR, AUTH_EMAIL_ALREADY_REGISTERED, AUTH_INVALID_CREDENTIALS, AUTH_UNAUTHENTICATED, AUTH_ACCOUNT_DISABLED, PROFILE_HANDLE_UNAVAILABLE, PROFILE_NOT_FOUND, ORIGIN_FORBIDDEN, CSRF_INVALID, AUTH_CHALLENGE_INVALID, AUTH_REAUTH_FAILED, AUTH_SESSION_NOT_FOUND, MAIL_UNAVAILABLE, AUTH_PROVIDER_UNAVAILABLE, AUTH_PROVIDER_INVALID, AUTH_PROVIDER_ALREADY_LINKED, AUTH_PROVIDER_NOT_LINKED, AUTH_ACCOUNT_LINK_REQUIRED, AUTH_REAUTH_REQUIRED, AUTH_LAST_METHOD, INTERNAL_ERROR]
         message:
           type: string
     Handle:

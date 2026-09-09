@@ -24,7 +24,12 @@ always uses the Secure `__Host-gofurry_session` cookie. Inject this through runt
 environment, never through image build arguments or checked-in local files.
 
 The retained `p0-0-local` image names are local build tags; rebuilding includes the
-current P0-1A code. Same-origin `/api/*` forwarding belongs to a future
+current P0-1A/B/C code. Same-origin `/api/*` forwarding belongs to a future
 deployment reverse proxy; the Admin static container returns 503 on that prefix until
 routing is configured. No VPS, Cloudflare, certificates, production credentials,
 image publishing or deployment is provisioned here.
+
+OAuth uses API-only Google/GitHub credential pairs injected at runtime. Callback
+URLs derive from `PUBLIC_ORIGIN`; no client secret belongs in Web/Admin builds.
+The future reverse proxy must suppress OAuth query strings, cookies and authorization
+headers in access/error logging and preserve all Set-Cookie headers on callbacks.

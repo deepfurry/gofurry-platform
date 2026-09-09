@@ -1,8 +1,8 @@
 # GoFurry Platform
 
 A multi-process modular monolith for furry resource discovery and exchange. P0-0
-established infrastructure; P0-1A/B add identity, local authentication, session
-security and account recovery.
+established infrastructure; P0-1A/B/C add identity, local authentication, session
+security, account recovery and explicit Google/GitHub account linking.
 
 ## Start here
 
@@ -41,6 +41,8 @@ are pattern references only and never override this repository.
   under `server/internal/jobs`. Do not create speculative domain packages.
 - Auth owns transactions and the challenge-mail interface. Raw challenge tokens
   never enter jobs; the mail adapter delivers after commit to private local capture.
+- Auth owns OAuth provider/flow interfaces. Provider tokens stay inside the adapter;
+  Redis holds only ten-minute one-use flows. Never auto-link accounts by email.
 - Never print, commit, replace or remove `server/env/*.local` or `.local/` secrets.
   Never include real DSNs, credentials or Tailnet addresses in tracked output.
 - Do not SSH/administer shared Infra or change cluster roles/Redis ACLs. Prepared

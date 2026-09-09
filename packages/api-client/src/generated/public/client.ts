@@ -5,6 +5,29 @@
  * Public health, local authentication, session security and basic profiles. Unsafe requests require exact PUBLIC_ORIGIN; authenticated unsafe requests also require a session-bound CSRF header.
  * OpenAPI spec version: 0.1.0
  */
+export type OAuthProvider = (typeof OAuthProvider)[keyof typeof OAuthProvider];
+
+export const OAuthProvider = {
+  google: "google",
+  github: "github",
+} as const;
+
+export interface OAuthAuthorization {
+  authorization_url: string;
+}
+
+export interface ProviderMethod {
+  provider: OAuthProvider;
+  /** @nullable */
+  email: string | null;
+  linked_at: string;
+}
+
+export interface AuthMethods {
+  password: boolean;
+  providers: ProviderMethod[];
+}
+
 export interface Accepted {
   message: string;
 }
@@ -60,9 +83,19 @@ export interface Reauthentication {
   password: string;
 }
 
+export type SessionAuthMethod =
+  (typeof SessionAuthMethod)[keyof typeof SessionAuthMethod];
+
+export const SessionAuthMethod = {
+  password: "password",
+  password_reset: "password_reset",
+  google: "google",
+  github: "github",
+} as const;
+
 export interface Session {
   id: string;
-  auth_method: string;
+  auth_method: SessionAuthMethod;
   authenticated_at: string;
   created_at: string;
   last_seen_at: string;
@@ -105,6 +138,13 @@ export const ApiErrorCode = {
   AUTH_REAUTH_FAILED: "AUTH_REAUTH_FAILED",
   AUTH_SESSION_NOT_FOUND: "AUTH_SESSION_NOT_FOUND",
   MAIL_UNAVAILABLE: "MAIL_UNAVAILABLE",
+  AUTH_PROVIDER_UNAVAILABLE: "AUTH_PROVIDER_UNAVAILABLE",
+  AUTH_PROVIDER_INVALID: "AUTH_PROVIDER_INVALID",
+  AUTH_PROVIDER_ALREADY_LINKED: "AUTH_PROVIDER_ALREADY_LINKED",
+  AUTH_PROVIDER_NOT_LINKED: "AUTH_PROVIDER_NOT_LINKED",
+  AUTH_ACCOUNT_LINK_REQUIRED: "AUTH_ACCOUNT_LINK_REQUIRED",
+  AUTH_REAUTH_REQUIRED: "AUTH_REAUTH_REQUIRED",
+  AUTH_LAST_METHOD: "AUTH_LAST_METHOD",
   INTERNAL_ERROR: "INTERNAL_ERROR",
 } as const;
 
@@ -214,6 +254,16 @@ export interface Ready {
 }
 
 /**
+ * No-store, no-referrer redirect. Start sets a short-lived HttpOnly flow cookie; a successful callback sets the public session cookie after commit.
+ */
+export type OAuthRedirectResponse = void;
+
+/**
+ * No-store authorization URL for a top-level browser navigation, with an HttpOnly flow binding cookie. Never store the URL.
+ */
+export type OAuthAuthorizationResponse = OAuthAuthorization;
+
+/**
  * Request accepted, including cooldown or ineligible account. No challenge token is returned.
  */
 export type AcceptedResponse = Accepted;
@@ -239,6 +289,388 @@ export type CredentialsBody = Credentials;
  * Obtain from GET /auth/csrf for the current session. Exact PUBLIC_ORIGIN is also required.
  */
 export type CsrfParameter = string;
+
+export type CompleteOAuthParams = {
+  state?: string;
+  code?: string;
+  error?: string;
+};
+
+export type startOAuthResponse302 = {
+  data: OAuthRedirectResponse;
+  status: 302;
+};
+
+export type startOAuthResponseError = startOAuthResponse302 & {
+  headers: Headers;
+};
+
+export type startOAuthResponse = startOAuthResponseError;
+
+export const getStartOAuthUrl = (provider: "google" | "github") => {
+  return `/api/auth/oauth/${provider}/start`;
+};
+
+/**
+ * Start login with one-time, browser-bound state and S256 PKCE. No return URL is accepted.
+ */
+export const startOAuth = async (
+  provider: "google" | "github",
+  options?: RequestInit,
+): Promise<startOAuthResponse> => {
+  const res = await fetch(getStartOAuthUrl(provider), {
+    ...options,
+    method: "GET",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: startOAuthResponse["data"] = body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as startOAuthResponse;
+};
+
+export type completeOAuthResponse302 = {
+  data: OAuthRedirectResponse;
+  status: 302;
+};
+
+export type completeOAuthResponseError = completeOAuthResponse302 & {
+  headers: Headers;
+};
+
+export type completeOAuthResponse = completeOAuthResponseError;
+
+export const getCompleteOAuthUrl = (
+  provider: "google" | "github",
+  params?: CompleteOAuthParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/auth/oauth/${provider}/callback?${stringifiedParams}`
+    : `/api/auth/oauth/${provider}/callback`;
+};
+
+/**
+ * Consume one-time state, validate provider identity and commit before setting a session cookie. Redirect only to fixed same-origin pages; never forward provider errors or tokens.
+ */
+export const completeOAuth = async (
+  provider: "google" | "github",
+  params?: CompleteOAuthParams,
+  options?: RequestInit,
+): Promise<completeOAuthResponse> => {
+  const res = await fetch(getCompleteOAuthUrl(provider, params), {
+    ...options,
+    method: "GET",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: completeOAuthResponse["data"] = body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as completeOAuthResponse;
+};
+
+export type getAuthMethodsResponse200 = {
+  data: AuthMethods;
+  status: 200;
+};
+
+export type getAuthMethodsResponse401 = {
+  data: ErrorResponse;
+  status: 401;
+};
+
+export type getAuthMethodsResponse500 = {
+  data: ErrorResponse;
+  status: 500;
+};
+
+export type getAuthMethodsResponseSuccess = getAuthMethodsResponse200 & {
+  headers: Headers;
+};
+export type getAuthMethodsResponseError = (
+  getAuthMethodsResponse401 | getAuthMethodsResponse500
+) & {
+  headers: Headers;
+};
+
+export type getAuthMethodsResponse =
+  getAuthMethodsResponseSuccess | getAuthMethodsResponseError;
+
+export const getGetAuthMethodsUrl = () => {
+  return `/api/me/auth-methods`;
+};
+
+export const getAuthMethods = async (
+  options?: RequestInit,
+): Promise<getAuthMethodsResponse> => {
+  const res = await fetch(getGetAuthMethodsUrl(), {
+    ...options,
+    method: "GET",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getAuthMethodsResponse["data"] = body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as getAuthMethodsResponse;
+};
+
+export type linkOAuthProviderResponse200 = {
+  data: OAuthAuthorizationResponse;
+  status: 200;
+};
+
+export type linkOAuthProviderResponse400 = {
+  data: ErrorResponse;
+  status: 400;
+};
+
+export type linkOAuthProviderResponse401 = {
+  data: ErrorResponse;
+  status: 401;
+};
+
+export type linkOAuthProviderResponse403 = {
+  data: ErrorResponse;
+  status: 403;
+};
+
+export type linkOAuthProviderResponse409 = {
+  data: ErrorResponse;
+  status: 409;
+};
+
+export type linkOAuthProviderResponse500 = {
+  data: ErrorResponse;
+  status: 500;
+};
+
+export type linkOAuthProviderResponse503 = {
+  data: ErrorResponse;
+  status: 503;
+};
+
+export type linkOAuthProviderResponseSuccess = linkOAuthProviderResponse200 & {
+  headers: Headers;
+};
+export type linkOAuthProviderResponseError = (
+  | linkOAuthProviderResponse400
+  | linkOAuthProviderResponse401
+  | linkOAuthProviderResponse403
+  | linkOAuthProviderResponse409
+  | linkOAuthProviderResponse500
+  | linkOAuthProviderResponse503
+) & {
+  headers: Headers;
+};
+
+export type linkOAuthProviderResponse =
+  linkOAuthProviderResponseSuccess | linkOAuthProviderResponseError;
+
+export const getLinkOAuthProviderUrl = (provider: "google" | "github") => {
+  return `/api/me/auth-methods/${provider}/link`;
+};
+
+/**
+ * Requires authentication within 15 minutes. Returns provider URL and sets an HttpOnly flow binding cookie. Callback revalidates the initiating session and freshness.
+ */
+export const linkOAuthProvider = async (
+  provider: "google" | "github",
+  options?: RequestInit,
+): Promise<linkOAuthProviderResponse> => {
+  const res = await fetch(getLinkOAuthProviderUrl(provider), {
+    ...options,
+    method: "POST",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: linkOAuthProviderResponse["data"] = body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as linkOAuthProviderResponse;
+};
+
+export type reauthenticateOAuthProviderResponse200 = {
+  data: OAuthAuthorizationResponse;
+  status: 200;
+};
+
+export type reauthenticateOAuthProviderResponse400 = {
+  data: ErrorResponse;
+  status: 400;
+};
+
+export type reauthenticateOAuthProviderResponse401 = {
+  data: ErrorResponse;
+  status: 401;
+};
+
+export type reauthenticateOAuthProviderResponse403 = {
+  data: ErrorResponse;
+  status: 403;
+};
+
+export type reauthenticateOAuthProviderResponse409 = {
+  data: ErrorResponse;
+  status: 409;
+};
+
+export type reauthenticateOAuthProviderResponse500 = {
+  data: ErrorResponse;
+  status: 500;
+};
+
+export type reauthenticateOAuthProviderResponse503 = {
+  data: ErrorResponse;
+  status: 503;
+};
+
+export type reauthenticateOAuthProviderResponseSuccess =
+  reauthenticateOAuthProviderResponse200 & {
+    headers: Headers;
+  };
+export type reauthenticateOAuthProviderResponseError = (
+  | reauthenticateOAuthProviderResponse400
+  | reauthenticateOAuthProviderResponse401
+  | reauthenticateOAuthProviderResponse403
+  | reauthenticateOAuthProviderResponse409
+  | reauthenticateOAuthProviderResponse500
+  | reauthenticateOAuthProviderResponse503
+) & {
+  headers: Headers;
+};
+
+export type reauthenticateOAuthProviderResponse =
+  | reauthenticateOAuthProviderResponseSuccess
+  | reauthenticateOAuthProviderResponseError;
+
+export const getReauthenticateOAuthProviderUrl = (
+  provider: "google" | "github",
+) => {
+  return `/api/me/auth-methods/${provider}/reauthenticate`;
+};
+
+/**
+ * Reauthenticate with the exact linked provider subject. Callback rotates the current session and refreshes authenticated_at.
+ */
+export const reauthenticateOAuthProvider = async (
+  provider: "google" | "github",
+  options?: RequestInit,
+): Promise<reauthenticateOAuthProviderResponse> => {
+  const res = await fetch(getReauthenticateOAuthProviderUrl(provider), {
+    ...options,
+    method: "POST",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: reauthenticateOAuthProviderResponse["data"] = body
+    ? JSON.parse(body)
+    : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as reauthenticateOAuthProviderResponse;
+};
+
+export type unlinkOAuthProviderResponse200 = {
+  data: AuthenticatedResponse;
+  status: 200;
+};
+
+export type unlinkOAuthProviderResponse400 = {
+  data: ErrorResponse;
+  status: 400;
+};
+
+export type unlinkOAuthProviderResponse401 = {
+  data: ErrorResponse;
+  status: 401;
+};
+
+export type unlinkOAuthProviderResponse403 = {
+  data: ErrorResponse;
+  status: 403;
+};
+
+export type unlinkOAuthProviderResponse409 = {
+  data: ErrorResponse;
+  status: 409;
+};
+
+export type unlinkOAuthProviderResponse500 = {
+  data: ErrorResponse;
+  status: 500;
+};
+
+export type unlinkOAuthProviderResponseSuccess =
+  unlinkOAuthProviderResponse200 & {
+    headers: Headers;
+  };
+export type unlinkOAuthProviderResponseError = (
+  | unlinkOAuthProviderResponse400
+  | unlinkOAuthProviderResponse401
+  | unlinkOAuthProviderResponse403
+  | unlinkOAuthProviderResponse409
+  | unlinkOAuthProviderResponse500
+) & {
+  headers: Headers;
+};
+
+export type unlinkOAuthProviderResponse =
+  unlinkOAuthProviderResponseSuccess | unlinkOAuthProviderResponseError;
+
+export const getUnlinkOAuthProviderUrl = (provider: "google" | "github") => {
+  return `/api/me/auth-methods/${provider}`;
+};
+
+/**
+ * Requires freshness within 15 minutes and another authentication method. The current auth_method must differ from the removed provider. Revokes its sessions, rotates this session, preserving its authentication time and method.
+ */
+export const unlinkOAuthProvider = async (
+  provider: "google" | "github",
+  options?: RequestInit,
+): Promise<unlinkOAuthProviderResponse> => {
+  const res = await fetch(getUnlinkOAuthProviderUrl(provider), {
+    ...options,
+    method: "DELETE",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unlinkOAuthProviderResponse["data"] = body
+    ? JSON.parse(body)
+    : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as unlinkOAuthProviderResponse;
+};
 
 export type registerResponse201 = {
   data: AuthenticatedResponse;

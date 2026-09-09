@@ -1,4 +1,4 @@
-// Package auth owns local authentication and canonical PostgreSQL sessions.
+// Package auth owns account authentication and canonical PostgreSQL sessions.
 package auth
 
 import (
@@ -29,6 +29,7 @@ type App struct {
 	dummyHash string
 	now       func() time.Time
 	mailer    ChallengeMailer
+	oauth     OAuthConfig
 }
 type Grant struct {
 	Me        identity.Me
@@ -36,7 +37,7 @@ type Grant struct {
 	ExpiresAt time.Time
 }
 
-func New(pool *pgxpool.Pool, mailer ChallengeMailer) (*App, error) {
+func New(pool *pgxpool.Pool, mailer ChallengeMailer, oauth ...OAuthConfig) (*App, error) {
 	if mailer == nil {
 		return nil, errors.New("challenge mailer is required")
 	}
@@ -45,7 +46,17 @@ func New(pool *pgxpool.Pool, mailer ChallengeMailer) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &App{pool: pool, dummyHash: dummy, now: time.Now, mailer: mailer}, nil
+	var providers OAuthConfig
+	if len(oauth) > 1 {
+		return nil, errors.New("only one OAuth configuration is allowed")
+	}
+	if len(oauth) == 1 {
+		providers, err = copyOAuthConfig(oauth[0])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &App{pool: pool, dummyHash: dummy, now: time.Now, mailer: mailer, oauth: providers}, nil
 }
 
 func (a *App) Register(ctx context.Context, email, password string) (Grant, error) {
@@ -82,7 +93,7 @@ func (a *App) Register(ctx context.Context, email, password string) (Grant, erro
 	if err = q.CreatePasswordCredential(ctx, sqlc.CreatePasswordCredentialParams{UserID: dbID(userID), PasswordHash: hash, PasswordUpdatedAt: timestamp(now)}); err != nil {
 		return Grant{}, database.SafeError("create password credential", err)
 	}
-	if err = createSession(ctx, q, userID, sessionID, token, hash, "password", now); err != nil {
+	if err = createSession(ctx, q, userID, sessionID, token, "password", now); err != nil {
 		return Grant{}, err
 	}
 	pending, err := issueChallenge(ctx, q, userID, identityID, email, purposeVerify, now)
@@ -161,7 +172,6 @@ func (a *App) finishLogin(ctx context.Context, row sqlc.FindLocalCredentialByEma
 		return Grant{}, errCredentialChanged
 	}
 	now = a.now().UTC()
-	verifiedHash := row.PasswordHash
 	if upgraded {
 		n, err := q.CompareAndSwapPasswordHash(ctx, sqlc.CompareAndSwapPasswordHashParams{UserID: row.ID, OldHash: row.PasswordHash, NewHash: replacement, Now: timestamp(now)})
 		if err != nil {
@@ -170,10 +180,9 @@ func (a *App) finishLogin(ctx context.Context, row sqlc.FindLocalCredentialByEma
 		if n != 1 {
 			return Grant{}, errCredentialChanged
 		}
-		verifiedHash = replacement
 	}
 	userID := uuid.UUID(row.ID.Bytes)
-	if err = createSession(ctx, q, userID, sessionID, token, verifiedHash, "password", now); err != nil {
+	if err = createSession(ctx, q, userID, sessionID, token, "password", now); err != nil {
 		return Grant{}, err
 	}
 	if err = recordEvent(ctx, q, loginSucceeded, userID, sessionID, now); err != nil {

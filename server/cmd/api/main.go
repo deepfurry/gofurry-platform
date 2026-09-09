@@ -14,6 +14,7 @@ import (
 	"github.com/deepfurry/gofurry-platform/server/internal/database"
 	"github.com/deepfurry/gofurry-platform/server/internal/identity"
 	"github.com/deepfurry/gofurry-platform/server/internal/mail"
+	"github.com/deepfurry/gofurry-platform/server/internal/oauthprovider"
 	"github.com/deepfurry/gofurry-platform/server/internal/redisstore"
 	platformruntime "github.com/deepfurry/gofurry-platform/server/internal/runtime"
 	"github.com/deepfurry/gofurry-platform/server/internal/transport/health"
@@ -56,11 +57,11 @@ func run() error {
 		defer capture.Close()
 		mailer = capture
 	}
-	authentication, err := auth.New(pool, mailer)
+	authentication, err := auth.New(pool, mailer, auth.OAuthConfig{Flows: store, Providers: oauthprovider.New(c)})
 	if err != nil {
 		return err
 	}
-	app := fiber.New(fiber.Config{ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, BodyLimit: 8192})
+	app := fiber.New(fiber.Config{ReadTimeout: 5 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 30 * time.Second, BodyLimit: 8192})
 	public.Register(app, checker, authentication, identity.New(pool), public.Options{Environment: c.Environment, PublicOrigin: c.PublicOrigin, CSRFSecret: c.CSRFSecret})
 	return platformruntime.HTTP(ctx, app, c.HTTPAddr, checker, logger)
 }
